@@ -8,5 +8,3 @@ build/
 .ruff_cache/
 .coverage
 .pytest_cache/
-
-
