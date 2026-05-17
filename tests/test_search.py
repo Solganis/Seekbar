@@ -9,7 +9,11 @@ from unittest.mock import MagicMock
 import pytest
 
 import filefinder.search
-from filefinder.search import SearchWorker, _score, discover_roots
+from filefinder.search import SearchWorker, discover_roots
+
+# _score is module-level, not a class internal; tests must verify it directly
+# noinspection PyProtectedMember
+_score = filefinder.search._score
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
