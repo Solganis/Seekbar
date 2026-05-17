@@ -57,7 +57,7 @@ class _ResultDelegate(QStyledItemDelegate):
     _ITEM_HEIGHT = 52
 
     @override
-    def paint(
+    def paint(  # pragma: no cover
         self,
         painter: QPainter,
         option: QStyleOptionViewItem,
@@ -425,7 +425,7 @@ class MainWindow(QWidget):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(parent))
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
