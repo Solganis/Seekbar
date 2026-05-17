@@ -1,18 +1,18 @@
 [project]
-name = "filefinder"
+name = "seekbar"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = ["PySide6>=6.8"]
 
 [project.scripts]
-filefinder = "filefinder.app:main"
+seekbar = "seekbar.app:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/filefinder"]
+packages = ["src/seekbar"]
 
 [tool.ruff]
 line-length = 120
@@ -23,7 +23,7 @@ select = ["ALL"]
 ignore = ["D", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/filefinder/app.py" = ["S603", "S607"]
+"src/seekbar/app.py" = ["S603", "S607"]
 "tests/**/*.py" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "TC002", "PLW0108"]
 
 [tool.ty.environment]
@@ -34,7 +34,7 @@ qt_api = "pyside6"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["filefinder"]
+source = ["seekbar"]
 omit = ["*/__main__.py"]
 
 [tool.coverage.report]

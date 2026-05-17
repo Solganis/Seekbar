@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from filefinder.search import SearchWorker
+from seekbar.search import SearchWorker
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint
@@ -109,7 +109,7 @@ class MainWindow(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("FileFinder")
+        self.setWindowTitle("Seekbar")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(620)
