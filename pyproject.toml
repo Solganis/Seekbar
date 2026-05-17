@@ -24,9 +24,26 @@ ignore = ["D", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/filefinder/app.py" = ["S603", "S607"]
+"tests/**/*.py" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "TC002", "PLW0108"]
 
 [tool.ty.environment]
 python-version = "3.14"
 
+[tool.pytest.ini_options]
+qt_api = "pyside6"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["filefinder"]
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__",
+]
+
 [dependency-groups]
-dev = ["ruff>=0.11", "ty>=0.0.37"]
+dev = ["ruff>=0.11", "ty>=0.0.37", "pytest>=9", "pytest-qt>=4.4", "pytest-cov>=6"]
