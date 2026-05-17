@@ -9,17 +9,17 @@ import pytest
 from PySide6.QtCore import QModelIndex, QPoint, Qt
 from PySide6.QtWidgets import QStyleOptionViewItem
 
-import filefinder.app
+import seekbar.app
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
-    from filefinder.app import MainWindow
+    from seekbar.app import MainWindow
 
 
 class TestMainWindow:
     def test_window_title(self, window: MainWindow):
-        assert window.windowTitle() == "FileFinder"
+        assert window.windowTitle() == "Seekbar"
 
     def test_frameless(self, window: MainWindow):
         assert window.windowFlags() & Qt.WindowType.FramelessWindowHint
@@ -112,7 +112,7 @@ class TestSearchLifecycle:
     def test_start_search(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("test")
         mock_worker = MagicMock()
-        monkeypatch.setattr(filefinder.app, "SearchWorker", lambda _q: mock_worker)
+        monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
         window._start_search()
         assert window._status_label.text() == "searching..."
         mock_worker.start.assert_called_once()
@@ -120,14 +120,14 @@ class TestSearchLifecycle:
     def test_start_search_empty(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("  ")
         mock_cls = MagicMock()
-        monkeypatch.setattr(filefinder.app, "SearchWorker", mock_cls)
+        monkeypatch.setattr(seekbar.app, "SearchWorker", mock_cls)
         window._start_search()
         mock_cls.assert_not_called()
 
     def test_start_search_immediate(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("test")
         mock_worker = MagicMock()
-        monkeypatch.setattr(filefinder.app, "SearchWorker", lambda _q: mock_worker)
+        monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
         window._start_search_immediate()
         mock_worker.start.assert_called_once()
 
@@ -210,33 +210,33 @@ class TestFileOpening:
         window._add_result("C:/test/hosts", 0)
         item = window._result_list.item(0)
         mock_desktop = MagicMock()
-        monkeypatch.setattr(filefinder.app, "QDesktopServices", mock_desktop)
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_file(item)
         mock_desktop.openUrl.assert_called_once()
 
     def test_open_file_by_path(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         mock_desktop = MagicMock()
-        monkeypatch.setattr(filefinder.app, "QDesktopServices", mock_desktop)
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_file_by_path("C:/test/hosts")
         mock_desktop.openUrl.assert_called_once()
 
     def test_open_folder_windows(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
         mock_popen = MagicMock()
-        monkeypatch.setattr(filefinder.app.subprocess, "Popen", mock_popen)
+        monkeypatch.setattr(seekbar.app.subprocess, "Popen", mock_popen)
         window._open_folder("C:/test/hosts")
         mock_popen.assert_called_once_with(["explorer", "/select,", "C:/test/hosts"])
 
     def test_open_folder_darwin(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
         mock_popen = MagicMock()
-        monkeypatch.setattr(filefinder.app.subprocess, "Popen", mock_popen)
+        monkeypatch.setattr(seekbar.app.subprocess, "Popen", mock_popen)
         window._open_folder("/Users/test/hosts")
         mock_popen.assert_called_once_with(["open", "-R", "/Users/test/hosts"])
 
     def test_open_folder_fallback(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
         mock_desktop = MagicMock()
-        monkeypatch.setattr(filefinder.app, "QDesktopServices", mock_desktop)
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_folder("/home/test/hosts")
         mock_desktop.openUrl.assert_called_once()

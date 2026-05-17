@@ -8,12 +8,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import filefinder.search
-from filefinder.search import SearchWorker, discover_roots
+import seekbar.search
+from seekbar.search import SearchWorker, discover_roots
 
 # _score is module-level, not a class internal; tests must verify it directly
 # noinspection PyProtectedMember
-_score = filefinder.search._score
+_score = seekbar.search._score
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -90,7 +90,7 @@ class TestDiscoverRoots:
                 return mock_volumes
             return original_path(arg)
 
-        monkeypatch.setattr(filefinder.search, "Path", fake_path)
+        monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
         assert len(roots) == 1
 
@@ -111,7 +111,7 @@ class TestDiscoverRoots:
                 return mock_volumes
             return original_path(arg)
 
-        monkeypatch.setattr(filefinder.search, "Path", fake_path)
+        monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
         assert len(roots) == 2
         assert mock_usb in roots
@@ -131,7 +131,7 @@ class TestDiscoverRoots:
                 return path_map[arg]
             return original_path(arg)
 
-        monkeypatch.setattr(filefinder.search, "Path", fake_path)
+        monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
         assert len(roots) == 1
 
@@ -153,7 +153,7 @@ class TestDiscoverRoots:
                 return path_map[arg]
             return original_path(arg)
 
-        monkeypatch.setattr(filefinder.search, "Path", fake_path)
+        monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
         assert len(roots) == 2
         assert mock_usb in roots
@@ -171,7 +171,7 @@ class TestSearchWorker:
         return tmp_path
 
     def test_finds_matching_files(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [search_tree])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
         worker.found.connect(lambda p, _s: results.append(Path(p).name))
@@ -182,7 +182,7 @@ class TestSearchWorker:
         assert sorted(results) == ["hosts", "hosts.txt", "myhosts"]
 
     def test_excludes_non_matching(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [search_tree])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
         worker.found.connect(lambda p, _s: results.append(Path(p).name))
@@ -193,7 +193,7 @@ class TestSearchWorker:
         assert "readme.txt" not in results
 
     def test_emits_correct_scores(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [search_tree])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         scores: dict[str, int] = {}
 
@@ -210,7 +210,7 @@ class TestSearchWorker:
         assert scores["myhosts"] == 3
 
     def test_finished_emits_total(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [search_tree])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
 
         with qtbot.waitSignal(worker.finished, timeout=5000) as blocker:
@@ -220,7 +220,7 @@ class TestSearchWorker:
 
     @pytest.mark.usefixtures("qtbot")
     def test_stop_interrupts(self, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [search_tree])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         worker.start()
         worker.stop()
@@ -229,8 +229,8 @@ class TestSearchWorker:
     def test_max_results_limit(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         for i in range(10):
             (tmp_path / f"hosts_{i}").touch()
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [tmp_path])
-        monkeypatch.setattr(filefinder.search, "MAX_RESULTS", 3)
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 3)
 
         worker = SearchWorker("hosts")
         count: list[int] = []
@@ -250,8 +250,8 @@ class TestSearchWorker:
             (root1 / f"hosts_{i}").touch()
         (root2 / "hosts_extra").touch()
 
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [root1, root2])
-        monkeypatch.setattr(filefinder.search, "MAX_RESULTS", 3)
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [root1, root2])
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 3)
 
         worker = SearchWorker("hosts")
         count: list[int] = []
@@ -263,7 +263,7 @@ class TestSearchWorker:
         assert len(count) == 3
 
     def test_scandir_permission_error(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
         monkeypatch.setattr(os, "scandir", MagicMock(side_effect=PermissionError))
 
         worker = SearchWorker("anything")
@@ -273,7 +273,7 @@ class TestSearchWorker:
         assert blocker.args == [0]
 
     def test_is_dir_os_error(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(filefinder.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
 
         entry = MagicMock()
         entry.name = "hosts_file"
