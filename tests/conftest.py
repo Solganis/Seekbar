@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from filefinder.app import MainWindow
+from seekbar.app import MainWindow
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
