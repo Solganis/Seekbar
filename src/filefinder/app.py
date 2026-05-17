@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 from filefinder.search import SearchWorker
 
 if TYPE_CHECKING:
-    from PySide6.QtCore import QModelIndex, QPoint
+    from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint
     from PySide6.QtGui import QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
@@ -57,7 +57,12 @@ class _ResultDelegate(QStyledItemDelegate):
     _ITEM_HEIGHT = 52
 
     @override
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         path_str = index.data(Qt.ItemDataRole.UserRole)
         if not path_str:
             return
@@ -91,7 +96,7 @@ class _ResultDelegate(QStyledItemDelegate):
         painter.restore()
 
     @override
-    def sizeHint(self, _option: QStyleOptionViewItem, _index: QModelIndex) -> QSize:
+    def sizeHint(self, _option: QStyleOptionViewItem, _index: QModelIndex | QPersistentModelIndex) -> QSize:
         return QSize(0, self._ITEM_HEIGHT)
 
 
@@ -201,15 +206,15 @@ class MainWindow(QWidget):
         top_row.setContentsMargins(0, 0, 6, 0)
         top_row.setSpacing(4)
         top_row.addWidget(self._search_input, stretch=1)
-        top_row.addWidget(self._status_label)
-        top_row.addWidget(self._close_button)
+        top_row.addWidget(self._status_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        top_row.addWidget(self._close_button, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        card_layout = QVBoxLayout(self._card)
-        card_layout.setContentsMargins(0, 0, 0, self._RADIUS)
-        card_layout.setSpacing(0)
-        card_layout.addLayout(top_row)
-        card_layout.addWidget(self._separator)
-        card_layout.addWidget(self._result_list)
+        self._card_layout = QVBoxLayout(self._card)
+        self._card_layout.setContentsMargins(0, 0, 0, 0)
+        self._card_layout.setSpacing(0)
+        self._card_layout.addLayout(top_row)
+        self._card_layout.addWidget(self._separator)
+        self._card_layout.addWidget(self._result_list)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(self._MARGIN, self._MARGIN, self._MARGIN, self._MARGIN)
@@ -295,6 +300,7 @@ class MainWindow(QWidget):
 
         self._result_list.setVisible(has_results)
         self._separator.setVisible(has_results)
+        self._card_layout.setContentsMargins(0, 0, 0, self._RADIUS if has_results else 0)
 
         if has_results:
             visible = min(count, self._MAX_VISIBLE)
@@ -397,7 +403,7 @@ class MainWindow(QWidget):
         act_folder.triggered.connect(lambda: self._open_folder(path))
         menu.addAction(act_open)
         menu.addAction(act_folder)
-        menu.exec(self._result_list.mapToGlobal(pos))
+        menu.popup(self._result_list.mapToGlobal(pos))
 
     def _open_file(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)
