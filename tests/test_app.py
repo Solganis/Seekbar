@@ -13,6 +13,7 @@ import seekbar.app
 
 # noinspection PyProtectedMember
 from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, _SETTINGS_APP, _SETTINGS_ORG, _system_font_family
+from seekbar.search import MAX_RESULTS
 from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
 
 if TYPE_CHECKING:
@@ -144,6 +145,17 @@ class TestSearchLifecycle:
         window._add_result("C:/test/file.txt", 4)
         window._on_search_done(1)
         assert "1" in window._status_label.text()
+
+    def test_add_result_ignored_without_worker(self, window: MainWindow):
+        window._worker = None
+        window._add_result("C:/test/stale.txt", 4)
+        assert window._result_list.count() == 0
+
+    def test_clear_text_stops_debounce_timer(self, window: MainWindow):
+        window._search_input.setText("query")
+        assert window._debounce_timer.isActive()
+        window._search_input.setText("")
+        assert not window._debounce_timer.isActive()
 
     def test_typing_shows_searching_immediately(self, window: MainWindow):
         window._on_search_done(0)
@@ -366,32 +378,32 @@ class TestIsDirRole:
 
 class TestResultDelegate:
     def test_has_folder_icon(self, window: MainWindow):
-        delegate = window._result_list.itemDelegate()
-        assert delegate._folder_icon is not None
-        assert not delegate._folder_icon.isNull()
+        delegate = window._delegate
+        assert delegate.folder_icon is not None
+        assert not delegate.folder_icon.isNull()
 
     def test_has_file_icon(self, window: MainWindow):
-        delegate = window._result_list.itemDelegate()
-        assert delegate._file_icon is not None
-        assert not delegate._file_icon.isNull()
+        delegate = window._delegate
+        assert delegate.file_icon is not None
+        assert not delegate.file_icon.isNull()
 
     def test_icon_size(self, window: MainWindow):
-        delegate = window._result_list.itemDelegate()
-        assert delegate._folder_icon.width() == 20
-        assert delegate._folder_icon.height() == 20
-        assert delegate._file_icon.width() == 20
-        assert delegate._file_icon.height() == 20
+        delegate = window._delegate
+        assert delegate.folder_icon.width() == 20
+        assert delegate.folder_icon.height() == 20
+        assert delegate.file_icon.width() == 20
+        assert delegate.file_icon.height() == 20
 
     def test_set_theme_rebuilds_icons(self, window: MainWindow):
-        delegate = window._result_list.itemDelegate()
-        old_folder = delegate._folder_icon
-        old_file = delegate._file_icon
+        delegate = window._delegate
+        old_folder = delegate.folder_icon
+        old_file = delegate.file_icon
         delegate.set_theme(LIGHT_THEME)
         assert delegate._theme is LIGHT_THEME
-        assert delegate._folder_icon is not old_folder
-        assert delegate._file_icon is not old_file
-        assert not delegate._folder_icon.isNull()
-        assert not delegate._file_icon.isNull()
+        assert delegate.folder_icon is not old_folder
+        assert delegate.file_icon is not old_file
+        assert not delegate.folder_icon.isNull()
+        assert not delegate.file_icon.isNull()
 
 
 class TestThemeSwitching:
@@ -463,3 +475,82 @@ class TestThemePersistence:
     def test_load_missing_key_defaults_to_auto(self, window: MainWindow):
         loaded = window._load_theme_mode()
         assert loaded == ThemeMode.AUTO
+
+
+class TestResultLimitIndicator:
+    def test_format_count_below_limit(self, window: MainWindow):
+        assert window._format_count(50) == "50 results"
+
+    def test_format_count_at_limit(self, window: MainWindow):
+        assert window._format_count(MAX_RESULTS) == f"{MAX_RESULTS}+ results"
+
+    def test_format_count_above_limit(self, window: MainWindow):
+        assert window._format_count(MAX_RESULTS + 1) == f"{MAX_RESULTS}+ results"
+
+    def test_status_shows_limit_on_done(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.app, "MAX_RESULTS", 3)
+        for i in range(3):
+            window._add_result(f"C:/test/file_{i}.txt", 4)
+        window._on_search_done(3)
+        assert "3+" in window._status_label.text()
+
+
+class TestWindowPositionPersistence:
+    def test_saves_position_on_close(self, window: MainWindow):
+        window.show()
+        window.move(QPoint(100, 200))
+        window.close()
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        assert settings.value("window_x") == 100
+        assert settings.value("window_y") == 200
+
+    def test_restores_saved_position(self, window: MainWindow):
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        screen = window.screen().geometry()
+        pos_x = screen.x() + 50
+        pos_y = screen.y() + 50
+        settings.setValue("window_x", pos_x)
+        settings.setValue("window_y", pos_y)
+        loaded = window._load_window_position()
+        assert loaded == QPoint(pos_x, pos_y)
+
+    def test_window_uses_saved_position_on_init(self, qtbot: QtBot):
+        screen = seekbar.app.QApplication.primaryScreen().geometry()
+        pos_x = screen.x() + 75
+        pos_y = screen.y() + 75
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("window_x", pos_x)
+        settings.setValue("window_y", pos_y)
+        fresh_window = seekbar.app.MainWindow()
+        qtbot.addWidget(fresh_window)
+        assert fresh_window.pos() == QPoint(pos_x, pos_y)
+
+    def test_fallback_on_offscreen_position(self, window: MainWindow):
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("window_x", -99999)
+        settings.setValue("window_y", -99999)
+        loaded = window._load_window_position()
+        assert loaded is None
+
+    def test_fallback_on_missing_position(self, window: MainWindow):
+        loaded = window._load_window_position()
+        assert loaded is None
+
+
+class TestPlaceholder:
+    def test_placeholder_text(self, window: MainWindow):
+        assert window._search_input.placeholderText() == "Search all drives..."
+
+
+class TestContextMenuIcons:
+    def test_actions_have_icons(self, window: MainWindow):
+        window._add_result("C:/test/hosts", 0)
+        window.show()
+        with patch.object(seekbar.app.QMenu, "popup"):
+            window._show_context_menu(QPoint(10, 10))
+        menu = window.findChild(seekbar.app.QMenu)
+        if menu:
+            actions = menu.actions()
+            assert len(actions) == 2
+            assert not actions[0].icon().isNull()
+            assert not actions[1].icon().isNull()

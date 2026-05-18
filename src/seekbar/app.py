@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast, override
 
-from PySide6.QtCore import QRect, QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QPoint, QRect, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -37,11 +37,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seekbar.search import SearchWorker
+from seekbar.search import MAX_RESULTS, SearchWorker
 from seekbar.theme import Theme, ThemeMode, resolve_theme
 
 if TYPE_CHECKING:
-    from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint
+    from PySide6.QtCore import QModelIndex, QPersistentModelIndex
     from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
@@ -77,6 +77,14 @@ class _ResultDelegate(QStyledItemDelegate):
         self._path_metrics = QFontMetrics(self._path_font)
         self._folder_icon = self._make_folder_icon()
         self._file_icon = self._make_file_icon()
+
+    @property
+    def folder_icon(self) -> QPixmap:
+        return self._folder_icon
+
+    @property
+    def file_icon(self) -> QPixmap:
+        return self._file_icon
 
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
@@ -212,8 +220,12 @@ class MainWindow(QWidget):
             self._on_system_theme_changed,
         )
 
-        screen = QApplication.primaryScreen().geometry()
-        self.move((screen.width() - self.width()) // 2, screen.height() // 4)
+        saved_pos = self._load_window_position()
+        if saved_pos:
+            self.move(saved_pos)
+        else:
+            screen = QApplication.primaryScreen().geometry()
+            self.move((screen.width() - self.width()) // 2, screen.height() // 4)
 
     @staticmethod
     def _load_theme_mode() -> ThemeMode:
@@ -228,6 +240,25 @@ class MainWindow(QWidget):
     def _save_theme_mode(mode: ThemeMode) -> None:
         settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
         settings.setValue("theme_mode", mode.value)
+
+    @staticmethod
+    def _load_window_position() -> QPoint | None:
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        pos_x = settings.value("window_x")
+        pos_y = settings.value("window_y")
+        if pos_x is None or pos_y is None:
+            return None
+        point = QPoint(int(pos_x), int(pos_y))
+        for screen in QApplication.screens():
+            if screen.geometry().contains(point):
+                return point
+        return None
+
+    @staticmethod
+    def _save_window_position(pos: QPoint) -> None:
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("window_x", pos.x())
+        settings.setValue("window_y", pos.y())
 
     def _set_theme(self, theme: Theme) -> None:
         self._theme = theme
@@ -261,7 +292,7 @@ class MainWindow(QWidget):
     def _build_search_input(self) -> QLineEdit:
         search_field = QLineEdit()
         search_field.setObjectName("searchInput")
-        search_field.setPlaceholderText("Search files...")
+        search_field.setPlaceholderText("Search all drives...")
         search_field.setFixedHeight(self._SEARCH_HEIGHT)
         search_field.textChanged.connect(self._on_text_changed)
         search_field.returnPressed.connect(self._activate_selected)
@@ -507,6 +538,7 @@ class MainWindow(QWidget):
 
     def _on_text_changed(self, text: str) -> None:
         if not text.strip():
+            self._debounce_timer.stop()
             self._stop_search()
             self._result_list.clear()
             self._sort_keys.clear()
@@ -539,6 +571,7 @@ class MainWindow(QWidget):
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_window_position(self.pos())
         self._stop_search()
         super().closeEvent(event)
 
@@ -551,6 +584,8 @@ class MainWindow(QWidget):
     def _add_result(
         self, path: str, score: int, depth: int = 0, is_dir: bool = False,  # noqa: FBT001, FBT002 - Qt signal emits positional args
     ) -> None:
+        if self._worker is None:
+            return
         key = (score, depth, len(Path(path).name))
         pos = bisect.bisect_right(self._sort_keys, key)
         self._sort_keys.insert(pos, key)
@@ -560,13 +595,19 @@ class MainWindow(QWidget):
         item.setSizeHint(QSize(0, self._ITEM_HEIGHT))
         self._result_list.insertItem(pos, item)
         count = self._result_list.count()
-        self._status_label.setText(f"{count} results")
+        self._status_label.setText(self._format_count(count))
         if count <= self._MAX_VISIBLE:
             self._sync_height()
 
+    @staticmethod
+    def _format_count(count: int) -> str:
+        if count >= MAX_RESULTS:
+            return f"{MAX_RESULTS}+ results"
+        return f"{count} results"
+
     def _on_search_done(self, _total: int) -> None:
         count = self._result_list.count()
-        self._status_label.setText("no results" if count == 0 else f"{count} results")
+        self._status_label.setText("no results" if count == 0 else self._format_count(count))
         self._sync_height()
 
     # -- actions --
@@ -577,9 +618,11 @@ class MainWindow(QWidget):
             return
         path = item.data(Qt.ItemDataRole.UserRole)
         menu = QMenu(self)
-        act_open = QAction("Open file", self)
+        file_icon = QIcon(self._delegate.file_icon)
+        folder_icon = QIcon(self._delegate.folder_icon)
+        act_open = QAction(file_icon, "Open file", self)
         act_open.triggered.connect(lambda: self._open_file_by_path(path))
-        act_folder = QAction("Open containing folder", self)
+        act_folder = QAction(folder_icon, "Open containing folder", self)
         act_folder.triggered.connect(lambda: self._open_folder(path))
         menu.addAction(act_open)
         menu.addAction(act_folder)
