@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtCore import QSettings
 
-from seekbar.app import MainWindow, _SETTINGS_APP, _SETTINGS_ORG
+from seekbar.app import MainWindow, SETTINGS_APP, SETTINGS_ORG
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _clear_settings():
-    settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
     settings.clear()
     yield
     settings.clear()

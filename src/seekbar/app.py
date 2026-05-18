@@ -47,8 +47,8 @@ if TYPE_CHECKING:
 
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
 _ICON_SIZE = 20
-_SETTINGS_ORG = "Seekbar"
-_SETTINGS_APP = "Seekbar"
+SETTINGS_ORG = "Seekbar"
+SETTINGS_APP = "Seekbar"
 
 
 def _system_font_family() -> str:
@@ -229,7 +229,7 @@ class MainWindow(QWidget):
 
     @staticmethod
     def _load_theme_mode() -> ThemeMode:
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         raw = settings.value("theme_mode", ThemeMode.AUTO.value)
         try:
             return ThemeMode(raw)
@@ -238,12 +238,12 @@ class MainWindow(QWidget):
 
     @staticmethod
     def _save_theme_mode(mode: ThemeMode) -> None:
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", mode.value)
 
     @staticmethod
     def _load_window_position() -> QPoint | None:
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         pos_x = settings.value("window_x")
         pos_y = settings.value("window_y")
         if pos_x is None or pos_y is None:
@@ -256,7 +256,7 @@ class MainWindow(QWidget):
 
     @staticmethod
     def _save_window_position(pos: QPoint) -> None:
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("window_x", pos.x())
         settings.setValue("window_y", pos.y())
 
