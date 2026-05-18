@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QStyleOptionViewItem
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, _SETTINGS_APP, _SETTINGS_ORG, _system_font_family
+from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, SETTINGS_APP, SETTINGS_ORG, _system_font_family
 from seekbar.search import MAX_RESULTS
 from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
 
@@ -457,17 +457,17 @@ class TestThemeSwitching:
 class TestThemePersistence:
     def test_cycle_saves_to_settings(self, window: MainWindow):
         window._cycle_theme()
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         assert settings.value("theme_mode") == ThemeMode.LIGHT.value
 
     def test_load_saved_mode(self, window: MainWindow):
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", "dark")
         loaded = window._load_theme_mode()
         assert loaded == ThemeMode.DARK
 
     def test_load_invalid_mode_defaults_to_auto(self, window: MainWindow):
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", "garbage")
         loaded = window._load_theme_mode()
         assert loaded == ThemeMode.AUTO
@@ -500,12 +500,12 @@ class TestWindowPositionPersistence:
         window.show()
         window.move(QPoint(100, 200))
         window.close()
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         assert settings.value("window_x") == 100
         assert settings.value("window_y") == 200
 
     def test_restores_saved_position(self, window: MainWindow):
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         screen = window.screen().geometry()
         pos_x = screen.x() + 50
         pos_y = screen.y() + 50
@@ -518,7 +518,7 @@ class TestWindowPositionPersistence:
         screen = seekbar.app.QApplication.primaryScreen().geometry()
         pos_x = screen.x() + 75
         pos_y = screen.y() + 75
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("window_x", pos_x)
         settings.setValue("window_y", pos_y)
         fresh_window = seekbar.app.MainWindow()
@@ -526,7 +526,7 @@ class TestWindowPositionPersistence:
         assert fresh_window.pos() == QPoint(pos_x, pos_y)
 
     def test_fallback_on_offscreen_position(self, window: MainWindow):
-        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("window_x", -99999)
         settings.setValue("window_y", -99999)
         loaded = window._load_window_position()
