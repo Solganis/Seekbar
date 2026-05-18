@@ -145,6 +145,19 @@ class TestSearchLifecycle:
         window._on_search_done(1)
         assert "1" in window._status_label.text()
 
+    def test_typing_shows_searching_immediately(self, window: MainWindow):
+        window._on_search_done(0)
+        assert window._status_label.text() == "no results"
+        window._search_input.setText("newquery")
+        assert window._status_label.text() == "searching..."
+
+    def test_typing_stops_previous_search(self, window: MainWindow):
+        mock_worker = MagicMock()
+        mock_worker.isRunning.return_value = True
+        window._worker = mock_worker
+        window._search_input.setText("newquery")
+        mock_worker.stop.assert_called_once()
+
     def test_start_search(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("test")
         mock_worker = MagicMock()
