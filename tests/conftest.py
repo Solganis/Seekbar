@@ -12,6 +12,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def window(qtbot: QtBot) -> MainWindow:
-    w = MainWindow()
-    qtbot.addWidget(w)
-    return w
+    main_window = MainWindow()
+    qtbot.addWidget(main_window)
+    return main_window

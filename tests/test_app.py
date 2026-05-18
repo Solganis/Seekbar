@@ -11,6 +11,9 @@ from PySide6.QtWidgets import QStyleOptionViewItem
 
 import seekbar.app
 
+# noinspection PyProtectedMember
+from seekbar.app import _FONT_FAMILY, _system_font_family
+
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
@@ -43,6 +46,31 @@ class TestMainWindow:
         size = delegate.sizeHint(QStyleOptionViewItem(), QModelIndex())
         assert size.height() == 52
 
+    def test_delegate_has_cached_fonts(self, window: MainWindow):
+        delegate = window._result_list.itemDelegate()
+        assert hasattr(delegate, "_name_font")
+        assert hasattr(delegate, "_path_font")
+        assert hasattr(delegate, "_name_metrics")
+        assert hasattr(delegate, "_path_metrics")
+
+
+class TestFontFamily:
+    def test_font_family_not_empty(self):
+        assert _FONT_FAMILY
+        assert isinstance(_FONT_FAMILY, str)
+
+    def test_windows_font(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(platform, "system", lambda: "Windows")
+        assert _system_font_family() == "Segoe UI"
+
+    def test_darwin_font(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(platform, "system", lambda: "Darwin")
+        assert _system_font_family() == ".AppleSystemUIFont"
+
+    def test_linux_font(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        assert _system_font_family() == "Sans"
+
 
 class TestSortedInsertion:
     def test_sorted_by_score(self, window: MainWindow):
@@ -62,6 +90,13 @@ class TestSortedInsertion:
             for i in range(window._result_list.count())
         ]
         assert names == ["a_hosts", "ab_hosts"]
+
+    def test_depth_sort_tiebreaker(self, window: MainWindow):
+        window._add_result("C:/a/b/c/hosts", 0, depth=3)
+        window._add_result("C:/hosts", 0, depth=1)
+
+        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        assert paths == ["C:/hosts", "C:/a/b/c/hosts"]
 
     def test_results_become_visible(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
@@ -178,7 +213,7 @@ class TestWindowDragging:
         assert window._drag_pos is None
 
 
-class TestInteraction:
+class TestKeyboardNavigation:
     def test_escape_closes(self, window: MainWindow, qtbot: QtBot):
         window.show()
         qtbot.keyClick(window, Qt.Key.Key_Escape)
@@ -193,6 +228,62 @@ class TestInteraction:
         window.show()
         qtbot.keyClick(window, Qt.Key.Key_A)
         assert window.isVisible()
+
+    def test_key_down_selects_first(self, window: MainWindow, qtbot: QtBot):
+        window._add_result("C:/test/a.txt", 4)
+        window._add_result("C:/test/b.txt", 4)
+        qtbot.keyClick(window, Qt.Key.Key_Down)
+        assert window._result_list.currentRow() == 0
+
+    def test_key_down_advances(self, window: MainWindow, qtbot: QtBot):
+        window._add_result("C:/test/a.txt", 4)
+        window._add_result("C:/test/b.txt", 4)
+        window._result_list.setCurrentRow(0)
+        qtbot.keyClick(window, Qt.Key.Key_Down)
+        assert window._result_list.currentRow() == 1
+
+    def test_key_down_stays_at_bottom(self, window: MainWindow, qtbot: QtBot):
+        window._add_result("C:/test/a.txt", 4)
+        window._add_result("C:/test/b.txt", 4)
+        window._result_list.setCurrentRow(1)
+        qtbot.keyClick(window, Qt.Key.Key_Down)
+        assert window._result_list.currentRow() == 1
+
+    def test_key_up_stays_at_top(self, window: MainWindow, qtbot: QtBot):
+        window._add_result("C:/test/a.txt", 4)
+        window._result_list.setCurrentRow(0)
+        qtbot.keyClick(window, Qt.Key.Key_Up)
+        assert window._result_list.currentRow() == 0
+
+    def test_move_selection_empty_list(self, window: MainWindow):
+        window._move_selection(1)
+        assert window._result_list.currentRow() == -1
+
+    def test_enter_opens_selected(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        window._add_result("C:/test/hosts", 0)
+        window._result_list.setCurrentRow(0)
+        mock_desktop = MagicMock()
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
+        window._activate_selected()
+        mock_desktop.openUrl.assert_called_once()
+
+    def test_return_key_via_key_press_event(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        window._add_result("C:/test/hosts", 0)
+        window._result_list.setCurrentRow(0)
+        window._result_list.setFocus()
+        mock_desktop = MagicMock()
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
+        qtbot_key_event = MagicMock()
+        qtbot_key_event.key.return_value = Qt.Key.Key_Return
+        window.keyPressEvent(qtbot_key_event)
+        mock_desktop.openUrl.assert_called_once()
+
+    def test_enter_without_selection_searches(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        window._search_input.setText("test")
+        mock_worker = MagicMock()
+        monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
+        window._activate_selected()
+        mock_worker.start.assert_called_once()
 
 
 class TestContextMenu:
@@ -222,17 +313,17 @@ class TestFileOpening:
 
     def test_open_folder_windows(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
-        mock_popen = MagicMock()
-        monkeypatch.setattr(seekbar.app.subprocess, "Popen", mock_popen)
+        mock_run = MagicMock()
+        monkeypatch.setattr(seekbar.app.subprocess, "run", mock_run)
         window._open_folder("C:/test/hosts")
-        mock_popen.assert_called_once_with(["explorer", "/select,", "C:/test/hosts"])
+        mock_run.assert_called_once_with(["explorer", "/select,", "C:/test/hosts"], check=False)
 
     def test_open_folder_darwin(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
-        mock_popen = MagicMock()
-        monkeypatch.setattr(seekbar.app.subprocess, "Popen", mock_popen)
+        mock_run = MagicMock()
+        monkeypatch.setattr(seekbar.app.subprocess, "run", mock_run)
         window._open_folder("/Users/test/hosts")
-        mock_popen.assert_called_once_with(["open", "-R", "/Users/test/hosts"])
+        mock_run.assert_called_once_with(["open", "-R", "/Users/test/hosts"], check=False)
 
     def test_open_folder_fallback(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
