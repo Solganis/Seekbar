@@ -15,6 +15,10 @@ from seekbar.search import MAX_RESULTS, SKIP_DIRS, MftSearchStrategy, SearchWork
 
 # noinspection PyProtectedMember
 _score = seekbar.search._score
+# noinspection PyProtectedMember
+_matches = seekbar.search._matches
+# noinspection PyProtectedMember
+_normalize = seekbar.search._normalize
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -32,6 +36,52 @@ class _FakeScandir:
 
     def __iter__(self):
         return iter(self._entries)
+
+
+class TestNormalize:
+    def test_underscore_to_space(self):
+        assert _normalize("hello_world") == "hello world"
+
+    def test_hyphen_to_space(self):
+        assert _normalize("hello-world") == "hello world"
+
+    def test_mixed_separators(self):
+        assert _normalize("my_file-name") == "my file name"
+
+    def test_no_separators(self):
+        assert _normalize("helloworld") == "helloworld"
+
+    def test_empty_string(self):
+        assert _normalize("") == ""
+
+
+class TestMatches:
+    def test_exact_substring(self):
+        assert _matches("hello_world", "hello world", ["hello", "world"]) is True
+
+    def test_no_match(self):
+        assert _matches("foobar", "hello world", ["hello", "world"]) is False
+
+    def test_token_only_different_order(self):
+        assert _matches("world_hello", "hello world", ["hello", "world"]) is True
+
+    def test_single_token_substring_match(self):
+        assert _matches("worldhello", "hello", ["hello"]) is True
+
+    def test_single_token_no_match(self):
+        assert _matches("foobar", "hello", ["hello"]) is False
+
+    def test_single_token_substring(self):
+        assert _matches("say_hello_there", "hello", ["hello"]) is True
+
+    def test_hyphen_matches_underscore_query(self):
+        assert _matches("hello-world", "hello world", ["hello", "world"]) is True
+
+    def test_concatenated_tokens_match(self):
+        assert _matches("helloworld", "hello world", ["hello", "world"]) is True
+
+    def test_tokens_scattered_in_name(self):
+        assert _matches("my_hello_big_world", "hello world", ["hello", "world"]) is True
 
 
 class TestScore:
@@ -57,6 +107,24 @@ class TestScore:
 
     def test_no_extension_exact_match(self):
         assert _score("makefile", "Makefile") == 0
+
+    def test_normalized_exact_match(self):
+        assert _score("hello world", "hello_world") == 0
+
+    def test_normalized_stem_match(self):
+        assert _score("hello world", "hello_world.txt") == 1
+
+    def test_normalized_starts_with(self):
+        assert _score("hello world", "hello_world_extra") == 2
+
+    def test_normalized_ends_with(self):
+        assert _score("hello world", "my_hello_world") == 3
+
+    def test_normalized_contains(self):
+        assert _score("hello world", "my_hello_world_file.txt") == 4
+
+    def test_token_only_score(self):
+        assert _score("hello world", "world_hello") == 5
 
 
 class TestDiscoverRoots:
@@ -309,6 +377,44 @@ class TestSearchWorker:
 
         assert len(results) == 1
 
+    def test_finds_underscore_with_space_query(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hello_world.txt").touch()
+        (tmp_path / "hello-world.py").touch()
+        (tmp_path / "helloworld.js").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+
+        worker = SearchWorker("hello world")
+        results: list[str] = []
+        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        assert "hello_world.txt" in results
+        assert "hello-world.py" in results
+        assert "helloworld.js" in results
+
+    def test_token_order_independent(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "world_hello.txt").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+
+        worker = SearchWorker("hello world")
+        results: list[str] = []
+        scores: dict[str, int] = {}
+
+        def on_found(path: str, score: int, _depth: int, _is_dir: bool):
+            name = Path(path).name
+            results.append(name)
+            scores[name] = score
+
+        worker.found.connect(on_found)
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        assert "world_hello.txt" in results
+        assert scores["world_hello.txt"] == 5
+
 
 class TestSkipDirs:
     def test_skips_excluded_dirs(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -422,7 +528,7 @@ class TestWalkSearchStrategy:
     def test_finds_matching(self, search_tree: Path):
         results: list[str] = []
         strategy = WalkSearchStrategy([search_tree])
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
         assert sorted(results) == ["hosts", "hosts.txt", "myhosts"]
 
     def test_respects_max_results(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -432,7 +538,7 @@ class TestWalkSearchStrategy:
 
         results: list[str] = []
         strategy = WalkSearchStrategy([tmp_path])
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 3
 
     def test_skips_excluded_dirs(self, tmp_path: Path):
@@ -443,27 +549,40 @@ class TestWalkSearchStrategy:
 
         results: list[str] = []
         strategy = WalkSearchStrategy([tmp_path])
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
         assert "hosts_root" in results
         assert "hosts_config" not in results
 
     def test_handles_permission_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(os, "scandir", MagicMock(side_effect=PermissionError))
         strategy = WalkSearchStrategy([tmp_path])
-        count = strategy.execute("anything", lambda _p, _s, _d, _id: None, lambda: False)
+        count = strategy.execute("anything", ["anything"], lambda _p, _s, _d, _id: None, lambda: False)
         assert count == 0
 
     def test_interruption(self, search_tree: Path):
         results: list[str] = []
         strategy = WalkSearchStrategy([search_tree])
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: True)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: True)
         assert len(results) == 0
 
     def test_returns_count(self, search_tree: Path):
         count = WalkSearchStrategy([search_tree]).execute(
-            "hosts", lambda _p, _s, _d, _id: None, lambda: False,
+            "hosts", ["hosts"], lambda _p, _s, _d, _id: None, lambda: False,
         )
         assert count == 3
+
+    def test_normalized_matching(self, tmp_path: Path):
+        (tmp_path / "hello_world.txt").touch()
+        (tmp_path / "hello-world.py").touch()
+        results: list[str] = []
+        strategy = WalkSearchStrategy([tmp_path])
+        strategy.execute(
+            "hello world", ["hello", "world"],
+            lambda path, _s, _d, _id: results.append(Path(path).name),
+            lambda: False,
+        )
+        assert "hello_world.txt" in results
+        assert "hello-world.py" in results
 
 
 class TestMftSearchStrategy:
@@ -481,7 +600,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 1
         assert results[0] == "C:\\hosts.txt"
 
@@ -493,7 +612,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 1
         assert results[0] == "C:\\Users\\hosts.txt"
 
@@ -504,7 +623,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 0
 
     def test_skip_dirs_filtering(self, monkeypatch: pytest.MonkeyPatch):
@@ -516,7 +635,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 0
 
     def test_interruption_between_batches(self, monkeypatch: pytest.MonkeyPatch):
@@ -534,7 +653,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), interrupt_after_first)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), interrupt_after_first)
         assert len(results) == 1
 
     def test_max_results_stops(self, monkeypatch: pytest.MonkeyPatch):
@@ -549,7 +668,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 2
 
     def test_scores_correct(self, monkeypatch: pytest.MonkeyPatch):
@@ -562,7 +681,7 @@ class TestMftSearchStrategy:
         scores: dict[str, int] = {}
         strategy = MftSearchStrategy("C:")
         strategy.execute(
-            "hosts",
+            "hosts", ["hosts"],
             lambda path, score, _d, _id: scores.__setitem__(Path(path).name, score),
             lambda: False,
         )
@@ -579,7 +698,7 @@ class TestMftSearchStrategy:
         depths: dict[str, int] = {}
         strategy = MftSearchStrategy("C:")
         strategy.execute(
-            "hosts",
+            "hosts", ["hosts"],
             lambda path, _s, depth, _id: depths.__setitem__(Path(path).name, depth),
             lambda: False,
         )
@@ -593,7 +712,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 0
 
     def test_retry_pending_max_results(self, monkeypatch: pytest.MonkeyPatch):
@@ -606,7 +725,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute("hosts", lambda path, _s, _d, _id: results.append(path), lambda: False)
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 1
 
     def test_sweep_emits_resolved(self):
