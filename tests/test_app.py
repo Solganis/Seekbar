@@ -3,16 +3,17 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QModelIndex, QPoint, Qt
+from PySide6.QtCore import QModelIndex, QPoint, QSettings, Qt
 from PySide6.QtWidgets import QStyleOptionViewItem
 
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, _system_font_family
+from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, _SETTINGS_APP, _SETTINGS_ORG, _system_font_family
+from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -285,6 +286,11 @@ class TestKeyboardNavigation:
         window._activate_selected()
         mock_worker.start.assert_called_once()
 
+    def test_ctrl_t_cycles_theme(self, window: MainWindow, qtbot: QtBot):
+        initial_mode = window._theme_mode
+        qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
+        assert window._theme_mode != initial_mode
+
 
 class TestContextMenu:
     def test_with_item(self, window: MainWindow):
@@ -362,3 +368,85 @@ class TestResultDelegate:
         assert delegate._folder_icon.height() == 20
         assert delegate._file_icon.width() == 20
         assert delegate._file_icon.height() == 20
+
+    def test_set_theme_rebuilds_icons(self, window: MainWindow):
+        delegate = window._result_list.itemDelegate()
+        old_folder = delegate._folder_icon
+        old_file = delegate._file_icon
+        delegate.set_theme(LIGHT_THEME)
+        assert delegate._theme is LIGHT_THEME
+        assert delegate._folder_icon is not old_folder
+        assert delegate._file_icon is not old_file
+        assert not delegate._folder_icon.isNull()
+        assert not delegate._file_icon.isNull()
+
+
+class TestThemeSwitching:
+    def test_default_mode_is_auto(self, window: MainWindow):
+        assert window._theme_mode == ThemeMode.AUTO
+
+    def test_cycle_auto_to_light(self, window: MainWindow):
+        window._cycle_theme()
+        assert window._theme_mode == ThemeMode.LIGHT
+
+    def test_cycle_light_to_dark(self, window: MainWindow):
+        window._theme_mode = ThemeMode.LIGHT
+        window._cycle_theme()
+        assert window._theme_mode == ThemeMode.DARK
+
+    def test_cycle_dark_to_auto(self, window: MainWindow):
+        window._theme_mode = ThemeMode.DARK
+        window._cycle_theme()
+        assert window._theme_mode == ThemeMode.AUTO
+
+    def test_cycle_applies_theme(self, window: MainWindow):
+        window._cycle_theme()
+        assert window._theme is LIGHT_THEME
+
+    def test_set_theme_updates_delegate(self, window: MainWindow):
+        window._set_theme(LIGHT_THEME)
+        delegate = window._result_list.itemDelegate()
+        assert delegate._theme is LIGHT_THEME
+
+    def test_system_theme_change_in_auto_mode(self, window: MainWindow):
+        window._theme_mode = ThemeMode.AUTO
+        mock_app = MagicMock()
+        mock_app.styleHints.return_value.colorScheme.return_value = Qt.ColorScheme.Light
+        with patch("seekbar.theme.QGuiApplication.instance", return_value=mock_app):
+            window._on_system_theme_changed(Qt.ColorScheme.Light)
+        assert window._theme is LIGHT_THEME
+
+    def test_system_theme_change_ignored_in_manual_mode(self, window: MainWindow):
+        window._theme_mode = ThemeMode.DARK
+        window._set_theme(DARK_THEME)
+        window._on_system_theme_changed(Qt.ColorScheme.Light)
+        assert window._theme is DARK_THEME
+
+    def test_close_icon_updates_on_theme_switch(self, window: MainWindow):
+        old_icon = window._close_button.icon()
+        window._set_theme(LIGHT_THEME)
+        new_icon = window._close_button.icon()
+        assert old_icon.cacheKey() != new_icon.cacheKey()
+
+
+class TestThemePersistence:
+    def test_cycle_saves_to_settings(self, window: MainWindow):
+        window._cycle_theme()
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        assert settings.value("theme_mode") == ThemeMode.LIGHT.value
+
+    def test_load_saved_mode(self, window: MainWindow):
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("theme_mode", "dark")
+        loaded = window._load_theme_mode()
+        assert loaded == ThemeMode.DARK
+
+    def test_load_invalid_mode_defaults_to_auto(self, window: MainWindow):
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("theme_mode", "garbage")
+        loaded = window._load_theme_mode()
+        assert loaded == ThemeMode.AUTO
+
+    def test_load_missing_key_defaults_to_auto(self, window: MainWindow):
+        loaded = window._load_theme_mode()
+        assert loaded == ThemeMode.AUTO
