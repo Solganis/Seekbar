@@ -53,11 +53,32 @@ _HOVER = "#252525"
 _SELECTED = "#332D41"
 
 
+def _system_font_family() -> str:
+    match platform.system():
+        case "Windows":
+            return "Segoe UI"
+        case "Darwin":
+            return ".AppleSystemUIFont"
+        case _:
+            return "Sans"
+
+
+_FONT_FAMILY = _system_font_family()
+
+
 class _ResultDelegate(QStyledItemDelegate):
     _ITEM_HEIGHT = 52
 
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._name_font = QFont(_FONT_FAMILY, 10)
+        self._name_font.setWeight(QFont.Weight.Medium)
+        self._name_metrics = QFontMetrics(self._name_font)
+        self._path_font = QFont(_FONT_FAMILY, 8)
+        self._path_metrics = QFontMetrics(self._path_font)
+
     @override
-    def paint(  # pragma: no cover
+    def paint(  # pragma: no cover - Qt paint events cannot be triggered reliably in headless tests
         self,
         painter: QPainter,
         option: QStyleOptionViewItem,
@@ -66,7 +87,7 @@ class _ResultDelegate(QStyledItemDelegate):
         path_str = index.data(Qt.ItemDataRole.UserRole)
         if not path_str:
             return
-        p = Path(path_str)
+        file_path = Path(path_str)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -78,19 +99,16 @@ class _ResultDelegate(QStyledItemDelegate):
         left = option.rect.left() + 16
         width = option.rect.width() - 32
 
-        name_font = QFont("Segoe UI", 10)
-        name_font.setWeight(QFont.Weight.Medium)
-        painter.setFont(name_font)
+        painter.setFont(self._name_font)
         painter.setPen(QColor(_ON_SURFACE))
         name_rect = QRect(left, option.rect.top() + 6, width, 22)
-        elided = QFontMetrics(name_font).elidedText(p.name, Qt.TextElideMode.ElideRight, width)
+        elided = self._name_metrics.elidedText(file_path.name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
-        path_font = QFont("Segoe UI", 8)
-        painter.setFont(path_font)
+        painter.setFont(self._path_font)
         painter.setPen(QColor(_ON_SURFACE_VARIANT))
         path_rect = QRect(left, option.rect.top() + 28, width, 18)
-        elided = QFontMetrics(path_font).elidedText(str(p.parent), Qt.TextElideMode.ElideMiddle, width)
+        elided = self._path_metrics.elidedText(str(file_path.parent), Qt.TextElideMode.ElideMiddle, width)
         painter.drawText(path_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
         painter.restore()
@@ -116,7 +134,7 @@ class MainWindow(QWidget):
 
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
-        self._sort_keys: list[tuple[int, int]] = []
+        self._sort_keys: list[tuple[int, int, int]] = []
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -142,31 +160,32 @@ class MainWindow(QWidget):
         return card
 
     def _build_search_input(self) -> QLineEdit:
-        inp = QLineEdit()
-        inp.setObjectName("searchInput")
-        inp.setPlaceholderText("Search files...")
-        inp.setFixedHeight(self._SEARCH_HEIGHT)
-        inp.textChanged.connect(self._on_text_changed)
-        inp.returnPressed.connect(self._start_search_immediate)
-        palette = inp.palette()
+        search_field = QLineEdit()
+        search_field.setObjectName("searchInput")
+        search_field.setPlaceholderText("Search files...")
+        search_field.setFixedHeight(self._SEARCH_HEIGHT)
+        search_field.textChanged.connect(self._on_text_changed)
+        search_field.returnPressed.connect(self._activate_selected)
+        palette = search_field.palette()
         palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(_ON_SURFACE_VARIANT))
-        inp.setPalette(palette)
-        return inp
+        search_field.setPalette(palette)
+        return search_field
 
+    # noinspection PyMethodMayBeStatic
     def _build_status_label(self) -> QLabel:
-        lbl = QLabel()
-        lbl.setObjectName("statusLabel")
-        return lbl
+        label = QLabel()
+        label.setObjectName("statusLabel")
+        return label
 
     def _build_close_button(self) -> QPushButton:
-        btn = QPushButton()
-        btn.setObjectName("closeButton")
-        btn.setFixedSize(self._SEARCH_HEIGHT - 12, self._SEARCH_HEIGHT - 12)
-        btn.setIcon(self._make_close_icon())
-        btn.setIconSize(QSize(14, 14))
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(self.close)
-        return btn
+        button = QPushButton()
+        button.setObjectName("closeButton")
+        button.setFixedSize(self._SEARCH_HEIGHT - 12, self._SEARCH_HEIGHT - 12)
+        button.setIcon(self._make_close_icon())
+        button.setIconSize(QSize(14, 14))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(self.close)
+        return button
 
     @staticmethod
     def _make_close_icon() -> QIcon:
@@ -176,30 +195,31 @@ class MainWindow(QWidget):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor(_ON_SURFACE_VARIANT), 1.5))
-        m = 3
-        painter.drawLine(m, m, size - m, size - m)
-        painter.drawLine(size - m, m, m, size - m)
+        margin = 3
+        painter.drawLine(margin, margin, size - margin, size - margin)
+        painter.drawLine(size - margin, margin, margin, size - margin)
         painter.end()
         return QIcon(pixmap)
 
+    # noinspection PyMethodMayBeStatic
     def _build_separator(self) -> QFrame:
-        sep = QFrame()
-        sep.setObjectName("separator")
-        sep.setFixedHeight(1)
-        sep.hide()
-        return sep
+        separator = QFrame()
+        separator.setObjectName("separator")
+        separator.setFixedHeight(1)
+        separator.hide()
+        return separator
 
     def _build_result_list(self) -> QListWidget:
-        lst = QListWidget()
-        lst.setObjectName("resultList")
-        lst.setItemDelegate(_ResultDelegate(lst))
-        lst.setMouseTracking(True)
-        lst.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        lst.customContextMenuRequested.connect(self._show_context_menu)
-        lst.itemDoubleClicked.connect(self._open_file)
-        lst.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        lst.hide()
-        return lst
+        result_list = QListWidget()
+        result_list.setObjectName("resultList")
+        result_list.setItemDelegate(_ResultDelegate(result_list))
+        result_list.setMouseTracking(True)
+        result_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        result_list.customContextMenuRequested.connect(self._show_context_menu)
+        result_list.itemDoubleClicked.connect(self._open_file)
+        result_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        result_list.hide()
+        return result_list
 
     def _assemble_layout(self) -> None:
         top_row = QHBoxLayout()
@@ -232,7 +252,7 @@ class MainWindow(QWidget):
                 border: none;
                 color: {_ON_SURFACE};
                 font-size: 15px;
-                font-family: "Segoe UI", sans-serif;
+                font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0 16px;
                 selection-background-color: {_PRIMARY};
             }}
@@ -243,7 +263,7 @@ class MainWindow(QWidget):
             #statusLabel {{
                 color: {_ON_SURFACE_VARIANT};
                 font-size: 11px;
-                font-family: "Segoe UI", sans-serif;
+                font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0;
                 background-color: transparent;
             }}
@@ -282,7 +302,7 @@ class MainWindow(QWidget):
                 border: 1px solid {_OUTLINE};
                 border-radius: 8px;
                 padding: 4px;
-                font-family: "Segoe UI", sans-serif;
+                font-family: "{_FONT_FAMILY}", sans-serif;
                 font-size: 12px;
             }}
             QMenu::item {{
@@ -305,11 +325,11 @@ class MainWindow(QWidget):
         if has_results:
             visible = min(count, self._MAX_VISIBLE)
             self._result_list.setFixedHeight(visible * self._ITEM_HEIGHT)
-            card_h = self._SEARCH_HEIGHT + 1 + visible * self._ITEM_HEIGHT + self._RADIUS
+            card_height = self._SEARCH_HEIGHT + 1 + visible * self._ITEM_HEIGHT + self._RADIUS
         else:
-            card_h = self._SEARCH_HEIGHT
+            card_height = self._SEARCH_HEIGHT
 
-        self.setFixedHeight(card_h + self._MARGIN * 2)
+        self.setFixedHeight(card_height + self._MARGIN * 2)
 
     # -- window dragging --
 
@@ -329,10 +349,32 @@ class MainWindow(QWidget):
 
     @override
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Escape:
-            self.close()
+        match event.key():
+            case Qt.Key.Key_Escape:
+                self.close()
+            case Qt.Key.Key_Down:
+                self._move_selection(1)
+            case Qt.Key.Key_Up:
+                self._move_selection(-1)
+            case Qt.Key.Key_Return | Qt.Key.Key_Enter:
+                self._activate_selected()
+            case _:
+                super().keyPressEvent(event)
+
+    def _move_selection(self, delta: int) -> None:
+        count = self._result_list.count()
+        if count == 0:
+            return
+        current = self._result_list.currentRow()
+        new_row = max(0, min(count - 1, current + delta))
+        self._result_list.setCurrentRow(new_row)
+
+    def _activate_selected(self) -> None:
+        item = self._result_list.currentItem()
+        if item:
+            self._open_file(item)
         else:
-            super().keyPressEvent(event)
+            self._start_search_immediate()
 
     # -- search lifecycle --
 
@@ -360,10 +402,11 @@ class MainWindow(QWidget):
         self._status_label.setText("searching...")
         self._sync_height()
 
-        self._worker = SearchWorker(query)
-        self._worker.found.connect(self._add_result)
-        self._worker.finished.connect(self._on_search_done)
-        self._worker.start()
+        worker = SearchWorker(query)
+        worker.found.connect(self._add_result)
+        worker.finished.connect(self._on_search_done)
+        worker.start()
+        self._worker = worker
 
     def _stop_search(self) -> None:
         if self._worker and self._worker.isRunning():
@@ -371,8 +414,8 @@ class MainWindow(QWidget):
             self._worker.wait(3000)
         self._worker = None
 
-    def _add_result(self, path: str, score: int) -> None:
-        key = (score, len(Path(path).name))
+    def _add_result(self, path: str, score: int, depth: int = 0) -> None:
+        key = (score, depth, len(Path(path).name))
         pos = bisect.bisect_right(self._sort_keys, key)
         self._sort_keys.insert(pos, key)
         item = QListWidgetItem()
@@ -417,15 +460,14 @@ class MainWindow(QWidget):
     def _open_folder(path: str) -> None:
         match platform.system():
             case "Windows":
-                subprocess.Popen(["explorer", "/select,", path])
+                subprocess.run(["explorer", "/select,", path], check=False)
             case "Darwin":
-                subprocess.Popen(["open", "-R", path])
+                subprocess.run(["open", "-R", path], check=False)
             case _:
-                parent = str(Path(path).parent)
-                QDesktopServices.openUrl(QUrl.fromLocalFile(parent))
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).parent)))
 
 
-def main() -> None:  # pragma: no cover
+def main() -> None:  # pragma: no cover - entry point starts Qt event loop, not unit-testable
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
