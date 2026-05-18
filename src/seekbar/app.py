@@ -186,6 +186,7 @@ class MainWindow(QWidget):
 
         self._theme_mode = self._load_theme_mode()
         self._theme = resolve_theme(self._theme_mode)
+        self.setWindowIcon(self._make_app_icon(self._theme))
 
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
@@ -232,6 +233,7 @@ class MainWindow(QWidget):
         self._theme = theme
         self._apply_styles()
         self._update_palette()
+        self.setWindowIcon(self._make_app_icon(theme))
         self._close_button.setIcon(self._make_close_icon(theme))
         self._delegate.set_theme(theme)
         self._result_list.viewport().update()
@@ -285,6 +287,27 @@ class MainWindow(QWidget):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(self.close)
         return button
+
+    @staticmethod
+    def _make_app_icon(theme: Theme) -> QIcon:
+        icon = QIcon()
+        for size in (16, 32, 48):
+            pixmap = QPixmap(size, size)
+            pixmap.fill(QColor(0, 0, 0, 0))
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            scale = size / 32.0
+            color = QColor(theme.primary)
+            painter.setPen(QPen(color, 2.0 * scale))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            cx, cy, radius = 12.0 * scale, 12.0 * scale, 8.0 * scale
+            painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
+            painter.setPen(QPen(color, 2.5 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            hx, hy = cx + radius * 0.707, cy + radius * 0.707
+            painter.drawLine(int(hx), int(hy), int(hx + 7 * scale), int(hy + 7 * scale))
+            painter.end()
+            icon.addPixmap(pixmap)
+        return icon
 
     @staticmethod
     def _make_close_icon(theme: Theme) -> QIcon:
