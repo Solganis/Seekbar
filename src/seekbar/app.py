@@ -490,6 +490,8 @@ class MainWindow(QWidget):
             self._status_label.clear()
             self._sync_height()
             return
+        self._stop_search()
+        self._status_label.setText("searching...")
         self._debounce_timer.start()
 
     def _start_search_immediate(self) -> None:
