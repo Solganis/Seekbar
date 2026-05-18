@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QStyleOptionViewItem
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import _FONT_FAMILY, _system_font_family
+from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, _system_font_family
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -331,3 +331,34 @@ class TestFileOpening:
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_folder("/home/test/hosts")
         mock_desktop.openUrl.assert_called_once()
+
+
+class TestIsDirRole:
+    def test_file_default(self, window: MainWindow):
+        window._add_result("C:/test/file.txt", 4)
+        item = window._result_list.item(0)
+        assert item.data(_IS_DIR_ROLE) is False
+
+    def test_directory_stored(self, window: MainWindow):
+        window._add_result("C:/test/folder", 4, is_dir=True)
+        item = window._result_list.item(0)
+        assert item.data(_IS_DIR_ROLE) is True
+
+
+class TestResultDelegate:
+    def test_has_folder_icon(self, window: MainWindow):
+        delegate = window._result_list.itemDelegate()
+        assert delegate._folder_icon is not None
+        assert not delegate._folder_icon.isNull()
+
+    def test_has_file_icon(self, window: MainWindow):
+        delegate = window._result_list.itemDelegate()
+        assert delegate._file_icon is not None
+        assert not delegate._file_icon.isNull()
+
+    def test_icon_size(self, window: MainWindow):
+        delegate = window._result_list.itemDelegate()
+        assert delegate._folder_icon.width() == 20
+        assert delegate._folder_icon.height() == 20
+        assert delegate._file_icon.width() == 20
+        assert delegate._file_icon.height() == 20

@@ -82,7 +82,7 @@ class WalkSearchStrategy:
     def execute(
         self,
         query: str,
-        on_found: Callable[[str, int, int], object],
+        on_found: Callable[[str, int, int, bool], object],
         is_interrupted: Callable[[], bool],
     ) -> int:
         count = 0
@@ -96,7 +96,7 @@ class WalkSearchStrategy:
     def _walk(
         root: Path,
         query: str,
-        on_found: Callable[[str, int, int], object],
+        on_found: Callable[[str, int, int, bool], object],
         is_interrupted: Callable[[], bool],
         initial_count: int,
     ) -> int:
@@ -114,15 +114,16 @@ class WalkSearchStrategy:
                 for entry in entries:
                     if is_interrupted() or (initial_count + count) >= MAX_RESULTS:
                         return count
+                    try:
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                    except OSError:
+                        is_dir = False
                     if query in entry.name.lower():
                         depth = entry.path.count(os.sep)
-                        on_found(entry.path, _score(query, entry.name), depth)
+                        on_found(entry.path, _score(query, entry.name), depth, is_dir)
                         count += 1
-                    try:
-                        if entry.is_dir(follow_symlinks=False) and entry.name not in SKIP_DIRS:
-                            stack.append(entry.path)
-                    except OSError:
-                        continue
+                    if is_dir and entry.name not in SKIP_DIRS:
+                        stack.append(entry.path)
         return count
 
 
@@ -138,7 +139,7 @@ class MftSearchStrategy:
     def execute(
         self,
         query: str,
-        on_found: Callable[[str, int, int], object],
+        on_found: Callable[[str, int, int, bool], object],
         is_interrupted: Callable[[], bool],
     ) -> int:
         from seekbar._mft import stream_mft  # noqa: PLC0415 - conditional, _mft is Windows-only
@@ -159,7 +160,9 @@ class MftSearchStrategy:
             if mft_record.is_dir and mft_record.name in SKIP_DIRS:
                 self._skip_refs.add(mft_record.file_ref)
 
-    def _match_batch(self, batch: list[MftRecord], query: str, on_found: Callable[[str, int, int], object]) -> None:
+    def _match_batch(
+        self, batch: list[MftRecord], query: str, on_found: Callable[[str, int, int, bool], object],
+    ) -> None:
         from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         for mft_record in batch:
@@ -170,12 +173,12 @@ class MftSearchStrategy:
             resolved = resolve_path(mft_record.file_ref, self._records, _MFT_ROOT_REF, self._drive, self._path_cache)
             if resolved:
                 if not self._is_under_skip_dir(mft_record.file_ref):
-                    on_found(resolved, _score(query, mft_record.name), resolved.count("\\"))
+                    on_found(resolved, _score(query, mft_record.name), resolved.count("\\"), mft_record.is_dir)
                     self._count += 1
             else:
                 self._pending[mft_record.file_ref] = mft_record
 
-    def _retry_pending(self, query: str, on_found: Callable[[str, int, int], object]) -> None:
+    def _retry_pending(self, query: str, on_found: Callable[[str, int, int, bool], object]) -> None:
         from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         resolved_refs: list[int] = []
@@ -186,12 +189,12 @@ class MftSearchStrategy:
             if resolved:
                 resolved_refs.append(ref)
                 if not self._is_under_skip_dir(ref):
-                    on_found(resolved, _score(query, mft_record.name), resolved.count("\\"))
+                    on_found(resolved, _score(query, mft_record.name), resolved.count("\\"), mft_record.is_dir)
                     self._count += 1
         for ref in resolved_refs:
             del self._pending[ref]
 
-    def _sweep_pending(self, query: str, on_found: Callable[[str, int, int], object]) -> None:
+    def _sweep_pending(self, query: str, on_found: Callable[[str, int, int, bool], object]) -> None:
         from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         for ref, mft_record in self._pending.items():
@@ -199,7 +202,7 @@ class MftSearchStrategy:
                 break
             resolved = resolve_path(ref, self._records, _MFT_ROOT_REF, self._drive, self._path_cache)
             if resolved and not self._is_under_skip_dir(ref):
-                on_found(resolved, _score(query, mft_record.name), resolved.count("\\"))
+                on_found(resolved, _score(query, mft_record.name), resolved.count("\\"), mft_record.is_dir)
                 self._count += 1
 
     def _is_under_skip_dir(self, file_ref: int) -> bool:
@@ -218,7 +221,7 @@ class MftSearchStrategy:
 
 
 class SearchWorker(QThread):
-    found = Signal(str, int, int)
+    found = Signal(str, int, int, bool)
     finished = Signal(int)
 
     def __init__(self, query: str) -> None:

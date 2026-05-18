@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QFontMetrics,
     QIcon,
     QPainter,
+    QPainterPath,
     QPalette,
     QPen,
     QPixmap,
@@ -40,7 +41,7 @@ from seekbar.search import SearchWorker
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint
-    from PySide6.QtGui import QKeyEvent, QMouseEvent
+    from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
 _SURFACE = "#1E1E1E"
@@ -51,6 +52,11 @@ _PRIMARY = "#BB86FC"
 _OUTLINE = "#333333"
 _HOVER = "#252525"
 _SELECTED = "#332D41"
+_FOLDER_COLOR = "#B39B6E"
+_FILE_COLOR = "#707070"
+_FILE_FOLD_COLOR = "#808080"
+_IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
+_ICON_SIZE = 20
 
 
 def _system_font_family() -> str:
@@ -76,6 +82,50 @@ class _ResultDelegate(QStyledItemDelegate):
         self._name_metrics = QFontMetrics(self._name_font)
         self._path_font = QFont(_FONT_FAMILY, 8)
         self._path_metrics = QFontMetrics(self._path_font)
+        self._folder_icon = self._make_folder_icon()
+        self._file_icon = self._make_file_icon()
+
+    @staticmethod
+    def _make_folder_icon() -> QPixmap:
+        pixmap = QPixmap(_ICON_SIZE, _ICON_SIZE)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.moveTo(1, 8)
+        path.lineTo(1, 4)
+        path.lineTo(7, 4)
+        path.lineTo(9, 6)
+        path.lineTo(19, 6)
+        path.lineTo(19, 17)
+        path.lineTo(1, 17)
+        path.closeSubpath()
+        painter.fillPath(path, QColor(_FOLDER_COLOR))
+        painter.end()
+        return pixmap
+
+    @staticmethod
+    def _make_file_icon() -> QPixmap:
+        pixmap = QPixmap(_ICON_SIZE, _ICON_SIZE)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        body = QPainterPath()
+        body.moveTo(3, 1)
+        body.lineTo(13, 1)
+        body.lineTo(17, 5)
+        body.lineTo(17, 19)
+        body.lineTo(3, 19)
+        body.closeSubpath()
+        painter.fillPath(body, QColor(_FILE_COLOR))
+        fold = QPainterPath()
+        fold.moveTo(13, 1)
+        fold.lineTo(13, 5)
+        fold.lineTo(17, 5)
+        fold.closeSubpath()
+        painter.fillPath(fold, QColor(_FILE_FOLD_COLOR))
+        painter.end()
+        return pixmap
 
     @override
     def paint(  # pragma: no cover - Qt paint events cannot be triggered reliably in headless tests
@@ -96,8 +146,14 @@ class _ResultDelegate(QStyledItemDelegate):
         elif option.state & QStyle.StateFlag.State_MouseOver:
             painter.fillRect(option.rect, QColor(_HOVER))
 
-        left = option.rect.left() + 16
-        width = option.rect.width() - 32
+        is_dir = index.data(_IS_DIR_ROLE)
+        icon = self._folder_icon if is_dir else self._file_icon
+        icon_x = option.rect.left() + 12
+        icon_y = option.rect.top() + (self._ITEM_HEIGHT - _ICON_SIZE) // 2
+        painter.drawPixmap(icon_x, icon_y, icon)
+
+        left = option.rect.left() + 40
+        width = option.rect.width() - 52
 
         painter.setFont(self._name_font)
         painter.setPen(QColor(_ON_SURFACE))
@@ -408,18 +464,26 @@ class MainWindow(QWidget):
         worker.start()
         self._worker = worker
 
+    @override
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._stop_search()
+        super().closeEvent(event)
+
     def _stop_search(self) -> None:
         if self._worker and self._worker.isRunning():
             self._worker.stop()
             self._worker.wait(3000)
         self._worker = None
 
-    def _add_result(self, path: str, score: int, depth: int = 0) -> None:
+    def _add_result(
+        self, path: str, score: int, depth: int = 0, is_dir: bool = False,  # noqa: FBT001, FBT002 - Qt signal emits positional args
+    ) -> None:
         key = (score, depth, len(Path(path).name))
         pos = bisect.bisect_right(self._sort_keys, key)
         self._sort_keys.insert(pos, key)
         item = QListWidgetItem()
         item.setData(Qt.ItemDataRole.UserRole, path)
+        item.setData(_IS_DIR_ROLE, is_dir)
         item.setSizeHint(QSize(0, self._ITEM_HEIGHT))
         self._result_list.insertItem(pos, item)
         count = self._result_list.count()
