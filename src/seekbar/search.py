@@ -167,9 +167,9 @@ class MftSearchStrategy:
                 break
             self._ingest_batch(batch)
             self._match_batch(batch, normalized_query, tokens, on_found)
-            self._retry_pending(normalized_query, on_found)
+            self._resolve_pending(normalized_query, on_found, cleanup=True)
 
-        self._sweep_pending(normalized_query, on_found)
+        self._resolve_pending(normalized_query, on_found, cleanup=False)
         return self._count
 
     def _ingest_batch(self, batch: list[MftRecord]) -> None:
@@ -201,8 +201,8 @@ class MftSearchStrategy:
             else:
                 self._pending[mft_record.file_ref] = mft_record
 
-    def _retry_pending(
-        self, normalized_query: str, on_found: Callable[[str, int, int, bool], object],
+    def _resolve_pending(
+        self, normalized_query: str, on_found: Callable[[str, int, int, bool], object], *, cleanup: bool,
     ) -> None:
         from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
@@ -217,22 +217,9 @@ class MftSearchStrategy:
                     score = _score(normalized_query, mft_record.name)
                     on_found(resolved, score, resolved.count("\\"), mft_record.is_dir)
                     self._count += 1
-        for ref in resolved_refs:
-            del self._pending[ref]
-
-    def _sweep_pending(
-        self, normalized_query: str, on_found: Callable[[str, int, int, bool], object],
-    ) -> None:
-        from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
-
-        for ref, mft_record in self._pending.items():
-            if self._count >= MAX_RESULTS:
-                break
-            resolved = resolve_path(ref, self._records, _MFT_ROOT_REF, self._drive, self._path_cache)
-            if resolved and not self._is_under_skip_dir(ref):
-                score = _score(normalized_query, mft_record.name)
-                on_found(resolved, score, resolved.count("\\"), mft_record.is_dir)
-                self._count += 1
+        if cleanup:
+            for ref in resolved_refs:
+                del self._pending[ref]
 
     def _is_under_skip_dir(self, file_ref: int) -> bool:
         from seekbar._mft import _MFT_ROOT_REF  # noqa: PLC0415 - conditional, _mft is Windows-only
