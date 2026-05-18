@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import QSettings
@@ -22,5 +23,6 @@ def _clear_settings():
 @pytest.fixture
 def window(qtbot: QtBot) -> MainWindow:
     main_window = MainWindow()
+    main_window._worker = MagicMock()
     qtbot.addWidget(main_window)
     return main_window

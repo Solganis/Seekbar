@@ -728,22 +728,31 @@ class TestMftSearchStrategy:
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert len(results) == 1
 
-    def test_sweep_emits_resolved(self):
+    def test_resolve_pending_emits_resolved(self):
         strategy = MftSearchStrategy("C:")
         strategy._records = {10: (5, "hosts.txt", False)}
         strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
         results: list[str] = []
-        strategy._sweep_pending("hosts", lambda path, _s, _d, _id: results.append(path))
+        strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=False)
         assert results == ["C:\\hosts.txt"]
 
-    def test_sweep_max_results(self):
+    def test_resolve_pending_max_results(self):
         strategy = MftSearchStrategy("C:")
         strategy._records = {10: (5, "hosts.txt", False)}
         strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
         strategy._count = MAX_RESULTS
         results: list[str] = []
-        strategy._sweep_pending("hosts", lambda path, _s, _d, _id: results.append(path))
+        strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=False)
         assert len(results) == 0
+
+    def test_resolve_pending_cleanup_removes_resolved(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {10: (5, "hosts.txt", False)}
+        strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
+        results: list[str] = []
+        strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=True)
+        assert results == ["C:\\hosts.txt"]
+        assert len(strategy._pending) == 0
 
 
 class TestIsUnderSkipDir:
