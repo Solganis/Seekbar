@@ -5,9 +5,9 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, cast, override
 
-from PySide6.QtCore import QRect, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QRect, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -38,25 +38,17 @@ from PySide6.QtWidgets import (
 )
 
 from seekbar.search import SearchWorker
+from seekbar.theme import Theme, ThemeMode, resolve_theme
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint
     from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
-_SURFACE = "#1E1E1E"
-_SURFACE_VARIANT = "#2C2C2C"
-_ON_SURFACE = "#E0E0E0"
-_ON_SURFACE_VARIANT = "#808080"
-_PRIMARY = "#BB86FC"
-_OUTLINE = "#333333"
-_HOVER = "#252525"
-_SELECTED = "#332D41"
-_FOLDER_COLOR = "#B39B6E"
-_FILE_COLOR = "#707070"
-_FILE_FOLD_COLOR = "#808080"
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
 _ICON_SIZE = 20
+_SETTINGS_ORG = "Seekbar"
+_SETTINGS_APP = "Seekbar"
 
 
 def _system_font_family() -> str:
@@ -75,8 +67,9 @@ _FONT_FAMILY = _system_font_family()
 class _ResultDelegate(QStyledItemDelegate):
     _ITEM_HEIGHT = 52
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme: Theme, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._theme = theme
         self._name_font = QFont(_FONT_FAMILY, 10)
         self._name_font.setWeight(QFont.Weight.Medium)
         self._name_metrics = QFontMetrics(self._name_font)
@@ -85,8 +78,12 @@ class _ResultDelegate(QStyledItemDelegate):
         self._folder_icon = self._make_folder_icon()
         self._file_icon = self._make_file_icon()
 
-    @staticmethod
-    def _make_folder_icon() -> QPixmap:
+    def set_theme(self, theme: Theme) -> None:
+        self._theme = theme
+        self._folder_icon = self._make_folder_icon()
+        self._file_icon = self._make_file_icon()
+
+    def _make_folder_icon(self) -> QPixmap:
         pixmap = QPixmap(_ICON_SIZE, _ICON_SIZE)
         pixmap.fill(QColor(0, 0, 0, 0))
         painter = QPainter(pixmap)
@@ -100,12 +97,11 @@ class _ResultDelegate(QStyledItemDelegate):
         path.lineTo(19, 17)
         path.lineTo(1, 17)
         path.closeSubpath()
-        painter.fillPath(path, QColor(_FOLDER_COLOR))
+        painter.fillPath(path, QColor(self._theme.folder_color))
         painter.end()
         return pixmap
 
-    @staticmethod
-    def _make_file_icon() -> QPixmap:
+    def _make_file_icon(self) -> QPixmap:
         pixmap = QPixmap(_ICON_SIZE, _ICON_SIZE)
         pixmap.fill(QColor(0, 0, 0, 0))
         painter = QPainter(pixmap)
@@ -117,13 +113,13 @@ class _ResultDelegate(QStyledItemDelegate):
         body.lineTo(17, 19)
         body.lineTo(3, 19)
         body.closeSubpath()
-        painter.fillPath(body, QColor(_FILE_COLOR))
+        painter.fillPath(body, QColor(self._theme.file_color))
         fold = QPainterPath()
         fold.moveTo(13, 1)
         fold.lineTo(13, 5)
         fold.lineTo(17, 5)
         fold.closeSubpath()
-        painter.fillPath(fold, QColor(_FILE_FOLD_COLOR))
+        painter.fillPath(fold, QColor(self._theme.file_fold_color))
         painter.end()
         return pixmap
 
@@ -142,9 +138,9 @@ class _ResultDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor(_SELECTED))
+            painter.fillRect(option.rect, QColor(self._theme.selected))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor(_HOVER))
+            painter.fillRect(option.rect, QColor(self._theme.hover))
 
         is_dir = index.data(_IS_DIR_ROLE)
         icon = self._folder_icon if is_dir else self._file_icon
@@ -156,13 +152,13 @@ class _ResultDelegate(QStyledItemDelegate):
         width = option.rect.width() - 52
 
         painter.setFont(self._name_font)
-        painter.setPen(QColor(_ON_SURFACE))
+        painter.setPen(QColor(self._theme.on_surface))
         name_rect = QRect(left, option.rect.top() + 6, width, 22)
         elided = self._name_metrics.elidedText(file_path.name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
         painter.setFont(self._path_font)
-        painter.setPen(QColor(_ON_SURFACE_VARIANT))
+        painter.setPen(QColor(self._theme.on_surface_variant))
         path_rect = QRect(left, option.rect.top() + 28, width, 18)
         elided = self._path_metrics.elidedText(str(file_path.parent), Qt.TextElideMode.ElideMiddle, width)
         painter.drawText(path_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
@@ -188,6 +184,9 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(620)
 
+        self._theme_mode = self._load_theme_mode()
+        self._theme = resolve_theme(self._theme_mode)
+
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
         self._sort_keys: list[tuple[int, int, int]] = []
@@ -205,10 +204,52 @@ class MainWindow(QWidget):
         self._result_list = self._build_result_list()
         self._assemble_layout()
         self._apply_styles()
+        self._update_palette()
         self._sync_height()
+
+        cast("QApplication", QApplication.instance()).styleHints().colorSchemeChanged.connect(
+            self._on_system_theme_changed,
+        )
 
         screen = QApplication.primaryScreen().geometry()
         self.move((screen.width() - self.width()) // 2, screen.height() // 4)
+
+    @staticmethod
+    def _load_theme_mode() -> ThemeMode:
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        raw = settings.value("theme_mode", ThemeMode.AUTO.value)
+        try:
+            return ThemeMode(raw)
+        except ValueError:
+            return ThemeMode.AUTO
+
+    @staticmethod
+    def _save_theme_mode(mode: ThemeMode) -> None:
+        settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        settings.setValue("theme_mode", mode.value)
+
+    def _set_theme(self, theme: Theme) -> None:
+        self._theme = theme
+        self._apply_styles()
+        self._update_palette()
+        self._close_button.setIcon(self._make_close_icon(theme))
+        self._delegate.set_theme(theme)
+        self._result_list.viewport().update()
+
+    def _cycle_theme(self) -> None:
+        match self._theme_mode:
+            case ThemeMode.AUTO:
+                self._theme_mode = ThemeMode.LIGHT
+            case ThemeMode.LIGHT:
+                self._theme_mode = ThemeMode.DARK
+            case ThemeMode.DARK:
+                self._theme_mode = ThemeMode.AUTO
+        self._save_theme_mode(self._theme_mode)
+        self._set_theme(resolve_theme(self._theme_mode))
+
+    def _on_system_theme_changed(self, _scheme: Qt.ColorScheme) -> None:
+        if self._theme_mode == ThemeMode.AUTO:
+            self._set_theme(resolve_theme(ThemeMode.AUTO))
 
     def _build_card(self) -> QFrame:
         card = QFrame(self)
@@ -222,10 +263,12 @@ class MainWindow(QWidget):
         search_field.setFixedHeight(self._SEARCH_HEIGHT)
         search_field.textChanged.connect(self._on_text_changed)
         search_field.returnPressed.connect(self._activate_selected)
-        palette = search_field.palette()
-        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(_ON_SURFACE_VARIANT))
-        search_field.setPalette(palette)
         return search_field
+
+    def _update_palette(self) -> None:
+        palette = self._search_input.palette()
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(self._theme.on_surface_variant))
+        self._search_input.setPalette(palette)
 
     # noinspection PyMethodMayBeStatic
     def _build_status_label(self) -> QLabel:
@@ -237,20 +280,20 @@ class MainWindow(QWidget):
         button = QPushButton()
         button.setObjectName("closeButton")
         button.setFixedSize(self._SEARCH_HEIGHT - 12, self._SEARCH_HEIGHT - 12)
-        button.setIcon(self._make_close_icon())
+        button.setIcon(self._make_close_icon(self._theme))
         button.setIconSize(QSize(14, 14))
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(self.close)
         return button
 
     @staticmethod
-    def _make_close_icon() -> QIcon:
+    def _make_close_icon(theme: Theme) -> QIcon:
         size = 14
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(_ON_SURFACE_VARIANT), 1.5))
+        painter.setPen(QPen(QColor(theme.on_surface_variant), 1.5))
         margin = 3
         painter.drawLine(margin, margin, size - margin, size - margin)
         painter.drawLine(size - margin, margin, margin, size - margin)
@@ -268,7 +311,8 @@ class MainWindow(QWidget):
     def _build_result_list(self) -> QListWidget:
         result_list = QListWidget()
         result_list.setObjectName("resultList")
-        result_list.setItemDelegate(_ResultDelegate(result_list))
+        self._delegate = _ResultDelegate(self._theme, result_list)
+        result_list.setItemDelegate(self._delegate)
         result_list.setMouseTracking(True)
         result_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         result_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -297,27 +341,29 @@ class MainWindow(QWidget):
         outer.addWidget(self._card)
 
     def _apply_styles(self) -> None:
+        theme = self._theme
         self.setStyleSheet(f"""
             #card {{
-                background-color: {_SURFACE};
-                border: 1px solid {_OUTLINE};
+                background-color: {theme.surface};
+                border: 1px solid {theme.outline};
                 border-radius: {self._RADIUS}px;
             }}
             #searchInput {{
                 background-color: transparent;
                 border: none;
-                color: {_ON_SURFACE};
+                color: {theme.on_surface};
                 font-size: 15px;
                 font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0 16px;
-                selection-background-color: {_PRIMARY};
+                selection-background-color: {theme.primary};
+                selection-color: {theme.surface};
             }}
             #separator {{
-                background-color: {_OUTLINE};
+                background-color: {theme.outline};
                 border: none;
             }}
             #statusLabel {{
-                color: {_ON_SURFACE_VARIANT};
+                color: {theme.on_surface_variant};
                 font-size: 11px;
                 font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0;
@@ -329,7 +375,7 @@ class MainWindow(QWidget):
                 border-radius: {(self._SEARCH_HEIGHT - 12) // 2}px;
             }}
             #closeButton:hover {{
-                background-color: {_HOVER};
+                background-color: {theme.hover};
             }}
             #resultList {{
                 background-color: transparent;
@@ -346,16 +392,16 @@ class MainWindow(QWidget):
                 margin: 4px 2px;
             }}
             QScrollBar::handle:vertical {{
-                background: {_OUTLINE};
+                background: {theme.outline};
                 border-radius: 3px;
                 min-height: 20px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
             QMenu {{
-                background-color: {_SURFACE_VARIANT};
-                color: {_ON_SURFACE};
-                border: 1px solid {_OUTLINE};
+                background-color: {theme.surface_variant};
+                color: {theme.on_surface};
+                border: 1px solid {theme.outline};
                 border-radius: 8px;
                 padding: 4px;
                 font-family: "{_FONT_FAMILY}", sans-serif;
@@ -366,7 +412,7 @@ class MainWindow(QWidget):
                 border-radius: 4px;
             }}
             QMenu::item:selected {{
-                background-color: {_HOVER};
+                background-color: {theme.hover};
             }}
         """)
 
@@ -414,6 +460,8 @@ class MainWindow(QWidget):
                 self._move_selection(-1)
             case Qt.Key.Key_Return | Qt.Key.Key_Enter:
                 self._activate_selected()
+            case Qt.Key.Key_T if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._cycle_theme()
             case _:
                 super().keyPressEvent(event)
 
