@@ -9,9 +9,10 @@ from unittest.mock import MagicMock
 import pytest
 
 import seekbar.search
-from seekbar.search import SearchWorker, discover_roots
+# noinspection PyProtectedMember
+from seekbar._mft import MftRecord
+from seekbar.search import MAX_RESULTS, SKIP_DIRS, MftSearchStrategy, SearchWorker, WalkSearchStrategy, discover_roots
 
-# _score is module-level, not a class internal; tests must verify it directly
 # noinspection PyProtectedMember
 _score = seekbar.search._score
 
@@ -164,17 +165,17 @@ class TestSearchWorker:
     def search_tree(self, tmp_path: Path) -> Path:
         (tmp_path / "hosts").touch()
         (tmp_path / "hosts.txt").write_text("data")
-        sub = tmp_path / "subdir"
-        sub.mkdir()
-        (sub / "myhosts").touch()
-        (sub / "readme.txt").write_text("data")
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "myhosts").touch()
+        (subdir / "readme.txt").write_text("data")
         return tmp_path
 
     def test_finds_matching_files(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s: results.append(Path(p).name))
+        worker.found.connect(lambda p, _s, _d: results.append(Path(p).name))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -185,7 +186,7 @@ class TestSearchWorker:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s: results.append(Path(p).name))
+        worker.found.connect(lambda p, _s, _d: results.append(Path(p).name))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -197,7 +198,7 @@ class TestSearchWorker:
         worker = SearchWorker("hosts")
         scores: dict[str, int] = {}
 
-        def on_found(path: str, score: int):
+        def on_found(path: str, score: int, _depth: int):
             scores[Path(path).name] = score
 
         worker.found.connect(on_found)
@@ -208,6 +209,23 @@ class TestSearchWorker:
         assert scores["hosts"] == 0
         assert scores["hosts.txt"] == 1
         assert scores["myhosts"] == 3
+
+    def test_emits_depth(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
+        worker = SearchWorker("hosts")
+        depths: dict[str, int] = {}
+
+        def on_found(path: str, _score: int, depth: int):
+            depths[Path(path).name] = depth
+
+        worker.found.connect(on_found)
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        top_level_depth = depths["hosts"]
+        sub_depth = depths["myhosts"]
+        assert sub_depth > top_level_depth
 
     def test_finished_emits_total(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
@@ -234,7 +252,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         count: list[int] = []
-        worker.found.connect(lambda _p, _s: count.append(1))
+        worker.found.connect(lambda _p, _s, _d: count.append(1))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -255,7 +273,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         count: list[int] = []
-        worker.found.connect(lambda _p, _s: count.append(1))
+        worker.found.connect(lambda _p, _s, _d: count.append(1))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -284,9 +302,432 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s: results.append(p))
+        worker.found.connect(lambda p, _s, _d: results.append(p))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
         assert len(results) == 1
+
+
+class TestSkipDirs:
+    def test_skips_excluded_dirs(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "hosts_config").touch()
+        node_dir = tmp_path / "node_modules"
+        node_dir.mkdir()
+        (node_dir / "hosts_pkg").touch()
+        (tmp_path / "hosts_root").touch()
+
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda p, _s, _d: results.append(Path(p).name))
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        assert "hosts_root" in results
+        assert "hosts_config" not in results
+        assert "hosts_pkg" not in results
+
+    def test_does_not_skip_regular_dirs(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        regular = tmp_path / "subdir"
+        regular.mkdir()
+        (regular / "hosts_sub").touch()
+
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda p, _s, _d: results.append(Path(p).name))
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        assert "hosts_sub" in results
+
+    def test_skip_dirs_is_frozenset(self):
+        assert isinstance(SKIP_DIRS, frozenset)
+        assert ".git" in SKIP_DIRS
+        assert "node_modules" in SKIP_DIRS
+
+
+class TestIterativeWalk:
+    def test_deep_directory(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        current = tmp_path
+        for i in range(50):
+            current = current / f"level_{i}"
+            current.mkdir()
+        (current / "hosts_deep").touch()
+
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda p, _s, _d: results.append(Path(p).name))
+
+        with qtbot.waitSignal(worker.finished, timeout=10000):
+            worker.start()
+
+        assert "hosts_deep" in results
+
+
+class TestEarlyReturn:
+    @pytest.mark.usefixtures("qtbot")
+    def test_run_walk_early_return_at_max_results(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "test_file").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path, tmp_path])
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 0)
+
+        worker = SearchWorker("test")
+        worker.run()
+
+        assert worker._count == 0
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_walk_exits_at_loop_start_when_max_reached(self, monkeypatch: pytest.MonkeyPatch):
+        dir_entry = MagicMock()
+        dir_entry.name = "subdir"
+        dir_entry.path = "C:\\root\\subdir"
+        dir_entry.is_dir.return_value = True
+
+        file_entry = MagicMock()
+        file_entry.name = "test_file"
+        file_entry.path = "C:\\root\\test_file"
+        file_entry.is_dir.return_value = False
+
+        monkeypatch.setattr(os, "scandir", lambda _p: _FakeScandir([dir_entry, file_entry]))
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [Path("C:\\root")])
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 1)
+
+        worker = SearchWorker("test")
+        results: list[str] = []
+        worker.found.connect(lambda path, _s, _d: results.append(path))
+        worker.run()
+
+        assert len(results) == 1
+
+
+class TestWalkSearchStrategy:
+    @pytest.fixture
+    def search_tree(self, tmp_path: Path) -> Path:
+        (tmp_path / "hosts").touch()
+        (tmp_path / "hosts.txt").write_text("data")
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "myhosts").touch()
+        (subdir / "readme.txt").write_text("data")
+        return tmp_path
+
+    def test_finds_matching(self, search_tree: Path):
+        results: list[str] = []
+        strategy = WalkSearchStrategy([search_tree])
+        strategy.execute("hosts", lambda path, _s, _d: results.append(Path(path).name), lambda: False)
+        assert sorted(results) == ["hosts", "hosts.txt", "myhosts"]
+
+    def test_respects_max_results(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        for i in range(10):
+            (tmp_path / f"hosts_{i}").touch()
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 3)
+
+        results: list[str] = []
+        strategy = WalkSearchStrategy([tmp_path])
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 3
+
+    def test_skips_excluded_dirs(self, tmp_path: Path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "hosts_config").touch()
+        (tmp_path / "hosts_root").touch()
+
+        results: list[str] = []
+        strategy = WalkSearchStrategy([tmp_path])
+        strategy.execute("hosts", lambda path, _s, _d: results.append(Path(path).name), lambda: False)
+        assert "hosts_root" in results
+        assert "hosts_config" not in results
+
+    def test_handles_permission_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(os, "scandir", MagicMock(side_effect=PermissionError))
+        strategy = WalkSearchStrategy([tmp_path])
+        count = strategy.execute("anything", lambda _p, _s, _d: None, lambda: False)
+        assert count == 0
+
+    def test_interruption(self, search_tree: Path):
+        results: list[str] = []
+        strategy = WalkSearchStrategy([search_tree])
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: True)
+        assert len(results) == 0
+
+    def test_returns_count(self, search_tree: Path):
+        count = WalkSearchStrategy([search_tree]).execute(
+            "hosts", lambda _p, _s, _d: None, lambda: False,
+        )
+        assert count == 3
+
+
+class TestMftSearchStrategy:
+    @staticmethod
+    def _make_stream_mft(batches):
+        def fake_stream_mft(_drive):
+            yield from batches
+        return fake_stream_mft
+
+    def test_immediate_match(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        hosts_file = MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)
+        batches = [[root_dir, hosts_file]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 1
+        assert results[0] == "C:\\hosts.txt"
+
+    def test_deferred_match(self, monkeypatch: pytest.MonkeyPatch):
+        hosts_file = MftRecord(file_ref=10, parent_ref=20, name="hosts.txt", is_dir=False)
+        parent_dir = MftRecord(file_ref=20, parent_ref=5, name="Users", is_dir=True)
+        batches = [[hosts_file], [parent_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 1
+        assert results[0] == "C:\\Users\\hosts.txt"
+
+    def test_orphan_never_emitted(self, monkeypatch: pytest.MonkeyPatch):
+        orphan = MftRecord(file_ref=10, parent_ref=999, name="hosts.txt", is_dir=False)
+        batches = [[orphan]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 0
+
+    def test_skip_dirs_filtering(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        git_dir = MftRecord(file_ref=20, parent_ref=5, name=".git", is_dir=True)
+        hosts_under_git = MftRecord(file_ref=30, parent_ref=20, name="hosts_config", is_dir=False)
+        batches = [[root_dir, git_dir, hosts_under_git]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 0
+
+    def test_interruption_between_batches(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        hosts1 = MftRecord(file_ref=10, parent_ref=5, name="hosts1", is_dir=False)
+        hosts2 = MftRecord(file_ref=11, parent_ref=5, name="hosts2", is_dir=False)
+        batches = [[root_dir, hosts1], [hosts2]]
+
+        call_count = [0]
+
+        def interrupt_after_first():
+            call_count[0] += 1
+            return call_count[0] > 1
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), interrupt_after_first)
+        assert len(results) == 1
+
+    def test_max_results_stops(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 2)
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        records = [
+            MftRecord(file_ref=i, parent_ref=5, name=f"hosts_{i}", is_dir=False)
+            for i in range(10, 20)
+        ]
+        batches = [[root_dir, *records]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 2
+
+    def test_scores_correct(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        exact = MftRecord(file_ref=10, parent_ref=5, name="hosts", is_dir=False)
+        stem = MftRecord(file_ref=11, parent_ref=5, name="hosts.txt", is_dir=False)
+        batches = [[root_dir, exact, stem]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        scores: dict[str, int] = {}
+        strategy = MftSearchStrategy("C:")
+        strategy.execute(
+            "hosts",
+            lambda path, score, _d: scores.__setitem__(Path(path).name, score),
+            lambda: False,
+        )
+        assert scores["hosts"] == 0
+        assert scores["hosts.txt"] == 1
+
+    def test_depth_from_backslashes(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        subdir = MftRecord(file_ref=10, parent_ref=5, name="Users", is_dir=True)
+        deep_file = MftRecord(file_ref=11, parent_ref=10, name="hosts.txt", is_dir=False)
+        batches = [[root_dir, subdir, deep_file]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        depths: dict[str, int] = {}
+        strategy = MftSearchStrategy("C:")
+        strategy.execute(
+            "hosts",
+            lambda path, _s, depth: depths.__setitem__(Path(path).name, depth),
+            lambda: False,
+        )
+        assert depths["hosts.txt"] == 2
+
+    def test_retry_pending_skip_dir(self, monkeypatch: pytest.MonkeyPatch):
+        hosts_file = MftRecord(file_ref=10, parent_ref=20, name="hosts.txt", is_dir=False)
+        git_dir = MftRecord(file_ref=20, parent_ref=5, name=".git", is_dir=True)
+        batches = [[hosts_file], [git_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 0
+
+    def test_retry_pending_max_results(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 1)
+        file1 = MftRecord(file_ref=10, parent_ref=20, name="hosts1", is_dir=False)
+        file2 = MftRecord(file_ref=11, parent_ref=20, name="hosts2", is_dir=False)
+        parent_dir = MftRecord(file_ref=20, parent_ref=5, name="Users", is_dir=True)
+        batches = [[file1, file2], [parent_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", lambda path, _s, _d: results.append(path), lambda: False)
+        assert len(results) == 1
+
+    def test_sweep_emits_resolved(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {10: (5, "hosts.txt", False)}
+        strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
+        results: list[str] = []
+        strategy._sweep_pending("hosts", lambda path, _s, _d: results.append(path))
+        assert results == ["C:\\hosts.txt"]
+
+    def test_sweep_max_results(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {10: (5, "hosts.txt", False)}
+        strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
+        strategy._count = MAX_RESULTS
+        results: list[str] = []
+        strategy._sweep_pending("hosts", lambda path, _s, _d: results.append(path))
+        assert len(results) == 0
+
+
+class TestIsUnderSkipDir:
+    def test_direct_skip_dir(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (20, "file.txt", False),
+            20: (5, ".git", True),
+        }
+        strategy._skip_refs = {20}
+        assert strategy._is_under_skip_dir(10) is True
+
+    def test_not_under_skip_dir(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (5, "file.txt", False),
+        }
+        strategy._skip_refs = set()
+        assert strategy._is_under_skip_dir(10) is False
+
+    def test_cycle_detection(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (11, "a", False),
+            11: (10, "b", False),
+        }
+        strategy._skip_refs = set()
+        assert strategy._is_under_skip_dir(10) is False
+
+    def test_root_ref_stops(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (5, "file.txt", False),
+        }
+        strategy._skip_refs = set()
+        assert strategy._is_under_skip_dir(10) is False
+
+
+class TestSearchWorkerStrategy:
+    @pytest.mark.usefixtures("qtbot")
+    def test_walk_on_non_windows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="linux"))
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda path, _s, _d: results.append(Path(path).name))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_mft_on_ntfs_windows(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [Path("C:\\")])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="win32"))
+
+        mock_is_ntfs = MagicMock(return_value=True)
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.return_value = 5
+
+        monkeypatch.setattr("seekbar._mft.is_ntfs", mock_is_ntfs)
+        monkeypatch.setattr("seekbar.search.MftSearchStrategy", mock_strategy)
+
+        worker = SearchWorker("hosts")
+        worker.run()
+
+        mock_is_ntfs.assert_called_once_with("C:")
+        mock_strategy.assert_called_once_with("C:")
+        assert worker._count == 5
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="win32"))
+
+        mock_is_ntfs = MagicMock(return_value=True)
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.side_effect = OSError("access denied")
+
+        monkeypatch.setattr("seekbar._mft.is_ntfs", mock_is_ntfs)
+        monkeypatch.setattr("seekbar.search.MftSearchStrategy", mock_strategy)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda path, _s, _d: results.append(Path(path).name))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_non_ntfs_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="win32"))
+
+        mock_is_ntfs = MagicMock(return_value=False)
+        monkeypatch.setattr("seekbar._mft.is_ntfs", mock_is_ntfs)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.found.connect(lambda path, _s, _d: results.append(Path(path).name))
+        worker.run()
+
+        assert "hosts" in results
