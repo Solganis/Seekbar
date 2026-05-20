@@ -5,7 +5,17 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast, override
 
-from PySide6.QtCore import QPoint, QRect, QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QRect,
+    QSettings,
+    QSize,
+    Qt,
+    QTimer,
+    QUrl,
+    QVariantAnimation,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -44,6 +54,15 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QStyleOptionViewItem
 
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
+_HELP_SHORTCUTS = (
+    (("Esc",), "Clear / Close"),
+    (("Enter",), "Open selected"),
+    (("↑", "↓"), "Navigate"),
+    (("PgUp", "PgDn"), "Jump page"),
+    (("Home", "End"), "First / last"),
+    (("Ctrl+T",), "Toggle theme"),
+    (("F1",), "This help"),
+)
 _ICON_SIZE = 20
 SETTINGS_ORG = "Seekbar"
 SETTINGS_APP = "Seekbar"
@@ -203,12 +222,33 @@ class MainWindow(QWidget):
         self._debounce_timer.setInterval(300)
         self._debounce_timer.timeout.connect(self._start_search)
 
+        self._searching_timer = QTimer(self)
+        self._searching_timer.setInterval(400)
+        self._searching_timer.timeout.connect(self._animate_searching)
+
+        self._help_hide_timer = QTimer(self)
+        self._help_hide_timer.setSingleShot(True)
+        self._help_hide_timer.setInterval(5000)
+        self._help_hide_timer.timeout.connect(self._hide_help)
+
+        self._temp_status_timer = QTimer(self)
+        self._temp_status_timer.setSingleShot(True)
+        self._temp_status_timer.timeout.connect(self._restore_status)
+
+        self._height_target = 0
+        self._height_anim = QVariantAnimation(self)
+        self._height_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._height_anim.setDuration(150)
+        self._height_anim.valueChanged.connect(self._apply_animated_height)
+        self._height_anim.finished.connect(self._finalize_height)
+
         self._card = self._build_card()
         self._search_input = self._build_search_input()
         self._status_label = self._build_status_label()
         self._close_button = self._build_close_button()
         self._separator = self._build_separator()
         self._result_list = self._build_result_list()
+        self._help_popup = self._build_help_popup()
         self._assemble_layout()
         self._apply_styles()
         self._update_palette()
@@ -264,6 +304,7 @@ class MainWindow(QWidget):
         self._update_palette()
         self.setWindowIcon(self._make_app_icon(theme))
         self._close_button.setIcon(self._make_close_icon(theme))
+        self._help_popup.setText(self._help_html())
         self._delegate.set_theme(theme)
         self._result_list.viewport().update()
 
@@ -310,6 +351,7 @@ class MainWindow(QWidget):
     def _build_close_button(self) -> QPushButton:
         button = QPushButton()
         button.setObjectName("closeButton")
+        button.setToolTip("")
         button.setFixedSize(self._SEARCH_HEIGHT - 12, self._SEARCH_HEIGHT - 12)
         button.setIcon(self._make_close_icon(self._theme))
         button.setIconSize(QSize(14, 14))
@@ -373,6 +415,30 @@ class MainWindow(QWidget):
         result_list.hide()
         return result_list
 
+    def _build_help_popup(self) -> QLabel:
+        label = QLabel()
+        label.setObjectName("helpPopup")
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setText(self._help_html())
+        label.hide()
+        return label
+
+    def _help_html(self) -> str:
+        theme = self._theme
+        cap = f"background-color:{theme.outline}; color:{theme.on_surface};"
+        sep = f'<span style="color:{theme.on_surface_variant};"> / </span>'
+        desc_style = f"color:{theme.on_surface_variant};"
+        rows = []
+        for keys, description in _HELP_SHORTCUTS:
+            caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
+            rows.append(
+                f"<tr>"
+                f'<td align="right" style="padding:3px 0;">{sep.join(caps)}</td>'
+                f'<td style="{desc_style} padding:3px 8px;">{description}</td>'
+                f"</tr>"
+            )
+        return f'<table cellspacing="2">{"".join(rows)}</table>'
+
     def _assemble_layout(self) -> None:
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 6, 0)
@@ -387,6 +453,7 @@ class MainWindow(QWidget):
         self._card_layout.addLayout(top_row)
         self._card_layout.addWidget(self._separator)
         self._card_layout.addWidget(self._result_list)
+        self._card_layout.addWidget(self._help_popup)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(self._MARGIN, self._MARGIN, self._MARGIN, self._MARGIN)
@@ -429,6 +496,9 @@ class MainWindow(QWidget):
             #closeButton:hover {{
                 background-color: {theme.hover};
             }}
+            #closeButton:pressed {{
+                background-color: {theme.outline};
+            }}
             #resultList {{
                 background-color: transparent;
                 border: none;
@@ -443,10 +513,16 @@ class MainWindow(QWidget):
                 width: 6px;
                 margin: 4px 2px;
             }}
+            QScrollBar:vertical:hover {{
+                width: 10px;
+            }}
             QScrollBar::handle:vertical {{
                 background: {theme.outline};
                 border-radius: 3px;
                 min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                border-radius: 5px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
@@ -466,24 +542,51 @@ class MainWindow(QWidget):
             QMenu::item:selected {{
                 background-color: {theme.hover};
             }}
+            #helpPopup {{
+                background-color: {theme.surface_variant};
+                color: {theme.on_surface};
+                border: none;
+                padding: 12px 16px;
+                font-family: "{_FONT_FAMILY}", sans-serif;
+                font-size: 12px;
+            }}
         """)
 
-    def _sync_height(self) -> None:
+    def _sync_height(self, *, animate: bool = False) -> None:
+        self._height_anim.stop()
         count = self._result_list.count()
         has_results = count > 0
+        help_visible = not self._help_popup.isHidden()
 
-        self._result_list.setVisible(has_results)
-        self._separator.setVisible(has_results)
-        self._card_layout.setContentsMargins(0, 0, 0, self._RADIUS if has_results else 0)
+        self._result_list.setVisible(has_results and not help_visible)
+        self._separator.setVisible(has_results or help_visible)
+        has_content = has_results or help_visible
+        self._card_layout.setContentsMargins(0, 0, 0, self._RADIUS if has_content else 0)
 
-        if has_results:
+        if help_visible:
+            help_height = self._help_popup.sizeHint().height()
+            card_height = self._SEARCH_HEIGHT + 1 + help_height + self._RADIUS
+        elif has_results:
             visible = min(count, self._MAX_VISIBLE)
             self._result_list.setFixedHeight(visible * self._ITEM_HEIGHT)
             card_height = self._SEARCH_HEIGHT + 1 + visible * self._ITEM_HEIGHT + self._RADIUS
         else:
             card_height = self._SEARCH_HEIGHT
 
-        self.setFixedHeight(card_height + self._MARGIN * 2)
+        target = card_height + self._MARGIN * 2
+        if animate and target > self.height():
+            self._height_target = target
+            self._height_anim.setStartValue(self.height())
+            self._height_anim.setEndValue(target)
+            self._height_anim.start()
+        else:
+            self.setFixedHeight(target)
+
+    def _apply_animated_height(self, value: int) -> None:
+        self.setFixedHeight(int(value))
+
+    def _finalize_height(self) -> None:
+        self.setFixedHeight(self._height_target)
 
     # -- window dragging --
 
@@ -502,20 +605,52 @@ class MainWindow(QWidget):
         self._drag_pos = None
 
     @override
+    def focusNextPrevChild(self, _next: bool) -> bool:
+        return True
+
+    @override
     def keyPressEvent(self, event: QKeyEvent) -> None:
         match event.key():
             case Qt.Key.Key_Escape:
-                self.close()
-            case Qt.Key.Key_Down:
-                self._move_selection(1)
-            case Qt.Key.Key_Up:
-                self._move_selection(-1)
+                if self._search_input.text():
+                    self._search_input.clear()
+                else:
+                    self.close()
+            case (
+                Qt.Key.Key_Down
+                | Qt.Key.Key_Up
+                | Qt.Key.Key_PageDown
+                | Qt.Key.Key_PageUp
+                | Qt.Key.Key_Home
+                | Qt.Key.Key_End
+            ):
+                self._handle_navigation(event.key())
             case Qt.Key.Key_Return | Qt.Key.Key_Enter:
                 self._activate_selected()
             case Qt.Key.Key_T if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 self._cycle_theme()
+            case Qt.Key.Key_F1:
+                self._toggle_help()
             case _:
                 super().keyPressEvent(event)
+
+    def _handle_navigation(self, key: int) -> None:
+        match key:
+            case Qt.Key.Key_Down:
+                self._move_selection(1)
+            case Qt.Key.Key_Up:
+                self._move_selection(-1)
+            case Qt.Key.Key_PageDown:
+                self._move_selection(self._MAX_VISIBLE)
+            case Qt.Key.Key_PageUp:
+                self._move_selection(-self._MAX_VISIBLE)
+            case Qt.Key.Key_Home:
+                if self._result_list.count() > 0:
+                    self._result_list.setCurrentRow(0)
+            case Qt.Key.Key_End:
+                count = self._result_list.count()
+                if count > 0:
+                    self._result_list.setCurrentRow(count - 1)
 
     def _move_selection(self, delta: int) -> None:
         count = self._result_list.count()
@@ -535,16 +670,18 @@ class MainWindow(QWidget):
     # -- search lifecycle --
 
     def _on_text_changed(self, text: str) -> None:
+        self._help_popup.hide()
         if not text.strip():
             self._debounce_timer.stop()
             self._stop_search()
+            self._stop_searching_animation()
             self._result_list.clear()
             self._sort_keys.clear()
             self._status_label.clear()
             self._sync_height()
             return
         self._stop_search()
-        self._status_label.setText("searching...")
+        self._start_searching_animation()
         self._debounce_timer.start()
 
     def _start_search_immediate(self) -> None:
@@ -558,7 +695,8 @@ class MainWindow(QWidget):
         self._stop_search()
         self._result_list.clear()
         self._sort_keys.clear()
-        self._status_label.setText("searching...")
+        if not self._searching_timer.isActive():
+            self._start_searching_animation()
         self._sync_height()
 
         worker = SearchWorker(query)
@@ -582,6 +720,7 @@ class MainWindow(QWidget):
     def _add_results_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
         if self._worker is None or not results:
             return
+        self._stop_searching_animation()
         self._result_list.setUpdatesEnabled(False)
         for path, score, depth, is_dir in results:
             key = (score, depth, len(Path(path).name))
@@ -595,7 +734,8 @@ class MainWindow(QWidget):
         self._result_list.setUpdatesEnabled(True)
         count = self._result_list.count()
         self._status_label.setText(self._format_count(count))
-        self._sync_height()
+        if self._help_popup.isHidden():
+            self._sync_height()
 
     def _add_result(
         self,
@@ -613,9 +753,32 @@ class MainWindow(QWidget):
         return f"{count} results"
 
     def _on_search_done(self, _total: int) -> None:
+        if self._worker is None:
+            return
+        self._stop_searching_animation()
         count = self._result_list.count()
         self._status_label.setText("no results" if count == 0 else self._format_count(count))
-        self._sync_height()
+        if self._help_popup.isHidden():
+            self._sync_height()
+
+    # -- searching animation --
+
+    def _start_searching_animation(self) -> None:
+        self._status_label.setText("searching.")
+        self._searching_timer.start()
+
+    def _stop_searching_animation(self) -> None:
+        self._searching_timer.stop()
+
+    def _animate_searching(self) -> None:
+        text = self._status_label.text()
+        match text:
+            case "searching.":
+                self._status_label.setText("searching..")
+            case "searching..":
+                self._status_label.setText("searching...")
+            case _:
+                self._status_label.setText("searching.")
 
     # -- actions --
 
@@ -639,19 +802,52 @@ class MainWindow(QWidget):
         path = item.data(Qt.ItemDataRole.UserRole)
         self._open_file_by_path(path)
 
-    @staticmethod
-    def _open_file_by_path(path: str) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+    def _open_file_by_path(self, path: str) -> None:
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+            self._show_temp_status("Failed to open file")
 
-    @staticmethod
-    def _open_folder(path: str) -> None:
-        match platform.system():
-            case "Windows":
-                subprocess.run(["explorer", "/select,", path], check=False)
-            case "Darwin":
-                subprocess.run(["open", "-R", path], check=False)
-            case _:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).parent)))
+    def _open_folder(self, path: str) -> None:
+        try:
+            match platform.system():
+                case "Windows":
+                    subprocess.run(["explorer", "/select,", path], check=False)
+                case "Darwin":
+                    subprocess.run(["open", "-R", path], check=False)
+                case _:
+                    if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).parent))):
+                        self._show_temp_status("Failed to open folder")
+        except OSError:
+            self._show_temp_status("Failed to open folder")
+
+    # -- feedback --
+
+    def _show_temp_status(self, message: str, duration_ms: int = 3000) -> None:
+        self._status_label.setText(message)
+        self._temp_status_timer.setInterval(duration_ms)
+        self._temp_status_timer.start()
+
+    def _restore_status(self) -> None:
+        count = self._result_list.count()
+        if count > 0:
+            self._status_label.setText(self._format_count(count))
+        else:
+            self._status_label.setText("")
+
+    # -- help popup --
+
+    def _toggle_help(self) -> None:
+        was_hidden = self._help_popup.isHidden()
+        self._help_popup.setVisible(was_hidden)
+        self._sync_height(animate=was_hidden)
+        if was_hidden:
+            self._help_hide_timer.start()
+        else:
+            self._help_hide_timer.stop()
+
+    def _hide_help(self) -> None:
+        if not self._help_popup.isHidden():
+            self._help_popup.hide()
+            self._sync_height()
 
 
 def main() -> None:  # pragma: no cover - entry point starts Qt event loop, not unit-testable
