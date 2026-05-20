@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import platform
 from pathlib import Path
@@ -9,9 +7,18 @@ from unittest.mock import MagicMock
 import pytest
 
 import seekbar.search
+
 # noinspection PyProtectedMember
 from seekbar._mft import MftRecord
-from seekbar.search import MAX_RESULTS, SKIP_DIRS, MftSearchStrategy, SearchWorker, WalkSearchStrategy, discover_roots
+from seekbar.search import (
+    MAX_RESULTS,
+    SKIP_DIRS,
+    MftSearchStrategy,
+    SearchWorker,
+    WalkSearchStrategy,
+    discover_roots,
+)
+
 
 # noinspection PyProtectedMember
 _score = seekbar.search._score
@@ -243,7 +250,7 @@ class TestSearchWorker:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -254,7 +261,7 @@ class TestSearchWorker:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -266,10 +273,11 @@ class TestSearchWorker:
         worker = SearchWorker("hosts")
         scores: dict[str, int] = {}
 
-        def on_found(path: str, score: int, _depth: int, _is_dir: bool):
-            scores[Path(path).name] = score
+        def on_batch(batch: list[tuple[str, int, int, bool]]):
+            for path, score, _depth, _is_dir in batch:
+                scores[Path(path).name] = score
 
-        worker.found.connect(on_found)
+        worker.batch_found.connect(on_batch)
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -283,10 +291,11 @@ class TestSearchWorker:
         worker = SearchWorker("hosts")
         depths: dict[str, int] = {}
 
-        def on_found(path: str, _score: int, depth: int, _is_dir: bool):
-            depths[Path(path).name] = depth
+        def on_batch(batch: list[tuple[str, int, int, bool]]):
+            for path, _s, depth, _is_dir in batch:
+                depths[Path(path).name] = depth
 
-        worker.found.connect(on_found)
+        worker.batch_found.connect(on_batch)
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -320,7 +329,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         count: list[int] = []
-        worker.found.connect(lambda _p, _s, _d, _id: count.append(1))
+        worker.batch_found.connect(lambda batch: count.extend(1 for _ in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -341,7 +350,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         count: list[int] = []
-        worker.found.connect(lambda _p, _s, _d, _id: count.append(1))
+        worker.batch_found.connect(lambda batch: count.extend(1 for _ in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -370,7 +379,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(p))
+        worker.batch_found.connect(lambda batch: results.extend(p for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -385,7 +394,7 @@ class TestSearchWorker:
 
         worker = SearchWorker("hello world")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -402,12 +411,13 @@ class TestSearchWorker:
         results: list[str] = []
         scores: dict[str, int] = {}
 
-        def on_found(path: str, score: int, _depth: int, _is_dir: bool):
-            name = Path(path).name
-            results.append(name)
-            scores[name] = score
+        def on_batch(batch: list[tuple[str, int, int, bool]]):
+            for path, score, _depth, _is_dir in batch:
+                name = Path(path).name
+                results.append(name)
+                scores[name] = score
 
-        worker.found.connect(on_found)
+        worker.batch_found.connect(on_batch)
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -429,7 +439,7 @@ class TestSkipDirs:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -446,7 +456,7 @@ class TestSkipDirs:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
@@ -470,7 +480,7 @@ class TestIterativeWalk:
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda p, _s, _d, _id: results.append(Path(p).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
 
         with qtbot.waitSignal(worker.finished, timeout=10000):
             worker.start()
@@ -508,7 +518,7 @@ class TestEarlyReturn:
 
         worker = SearchWorker("test")
         results: list[str] = []
-        worker.found.connect(lambda path, _s, _d, _id: results.append(path))
+        worker.batch_found.connect(lambda batch: results.extend(p for p, _s, _d, _id in batch))
         worker.run()
 
         assert len(results) == 1
@@ -567,7 +577,10 @@ class TestWalkSearchStrategy:
 
     def test_returns_count(self, search_tree: Path):
         count = WalkSearchStrategy([search_tree]).execute(
-            "hosts", ["hosts"], lambda _p, _s, _d, _id: None, lambda: False,
+            "hosts",
+            ["hosts"],
+            lambda _p, _s, _d, _id: None,
+            lambda: False,
         )
         assert count == 3
 
@@ -577,7 +590,8 @@ class TestWalkSearchStrategy:
         results: list[str] = []
         strategy = WalkSearchStrategy([tmp_path])
         strategy.execute(
-            "hello world", ["hello", "world"],
+            "hello world",
+            ["hello", "world"],
             lambda path, _s, _d, _id: results.append(Path(path).name),
             lambda: False,
         )
@@ -590,6 +604,7 @@ class TestMftSearchStrategy:
     def _make_stream_mft(batches):
         def fake_stream_mft(_drive):
             yield from batches
+
         return fake_stream_mft
 
     def test_immediate_match(self, monkeypatch: pytest.MonkeyPatch):
@@ -659,10 +674,7 @@ class TestMftSearchStrategy:
     def test_max_results_stops(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 2)
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
-        records = [
-            MftRecord(file_ref=i, parent_ref=5, name=f"hosts_{i}", is_dir=False)
-            for i in range(10, 20)
-        ]
+        records = [MftRecord(file_ref=i, parent_ref=5, name=f"hosts_{i}", is_dir=False) for i in range(10, 20)]
         batches = [[root_dir, *records]]
 
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
@@ -681,7 +693,8 @@ class TestMftSearchStrategy:
         scores: dict[str, int] = {}
         strategy = MftSearchStrategy("C:")
         strategy.execute(
-            "hosts", ["hosts"],
+            "hosts",
+            ["hosts"],
             lambda path, score, _d, _id: scores.__setitem__(Path(path).name, score),
             lambda: False,
         )
@@ -698,7 +711,8 @@ class TestMftSearchStrategy:
         depths: dict[str, int] = {}
         strategy = MftSearchStrategy("C:")
         strategy.execute(
-            "hosts", ["hosts"],
+            "hosts",
+            ["hosts"],
             lambda path, _s, depth, _id: depths.__setitem__(Path(path).name, depth),
             lambda: False,
         )
@@ -800,7 +814,7 @@ class TestSearchWorkerStrategy:
 
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda path, _s, _d, _id: results.append(Path(path).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
         assert "hosts" in results
@@ -839,7 +853,7 @@ class TestSearchWorkerStrategy:
 
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda path, _s, _d, _id: results.append(Path(path).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
         assert "hosts" in results
@@ -855,7 +869,59 @@ class TestSearchWorkerStrategy:
 
         worker = SearchWorker("hosts")
         results: list[str] = []
-        worker.found.connect(lambda path, _s, _d, _id: results.append(Path(path).name))
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
         assert "hosts" in results
+
+
+class TestBatchBuffer:
+    @pytest.mark.usefixtures("qtbot")
+    def test_batch_signal_emits_list_of_tuples(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+
+        batches: list[list] = []
+        worker = SearchWorker("hosts")
+        worker.batch_found.connect(lambda batch: batches.append(batch))
+        worker.run()
+
+        assert len(batches) == 1
+        assert len(batches[0]) == 1
+        path, score, depth, is_dir = batches[0][0]
+        assert Path(path).name == "hosts"
+        assert isinstance(score, int)
+        assert isinstance(depth, int)
+        assert isinstance(is_dir, bool)
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_buffer_flushes_at_batch_size(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        for i in range(5):
+            (tmp_path / f"hosts_{i}").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr(seekbar.search, "_BATCH_SIZE", 2)
+
+        batches: list[list] = []
+        worker = SearchWorker("hosts")
+        worker.batch_found.connect(lambda batch: batches.append(batch))
+        worker.run()
+
+        assert len(batches) >= 2
+        total_items = sum(len(batch) for batch in batches)
+        assert total_items == 5
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_remaining_buffer_flushed_at_end(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts_1").touch()
+        (tmp_path / "hosts_2").touch()
+        (tmp_path / "hosts_3").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr(seekbar.search, "_BATCH_SIZE", 1000)
+
+        batches: list[list] = []
+        worker = SearchWorker("hosts")
+        worker.batch_found.connect(lambda batch: batches.append(batch))
+        worker.run()
+
+        assert len(batches) == 1
+        assert len(batches[0]) == 3

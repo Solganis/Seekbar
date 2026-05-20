@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -430,8 +428,7 @@ class TestThemeSwitching:
 
     def test_set_theme_updates_delegate(self, window: MainWindow):
         window._set_theme(LIGHT_THEME)
-        delegate = window._result_list.itemDelegate()
-        assert delegate._theme is LIGHT_THEME
+        assert window._delegate._theme is LIGHT_THEME
 
     def test_system_theme_change_in_auto_mode(self, window: MainWindow):
         window._theme_mode = ThemeMode.AUTO
@@ -554,3 +551,77 @@ class TestContextMenuIcons:
             assert len(actions) == 2
             assert not actions[0].icon().isNull()
             assert not actions[1].icon().isNull()
+
+
+class TestBatchInsertion:
+    def test_batch_inserts_multiple_items(self, window: MainWindow):
+        window._add_results_batch(
+            [
+                ("C:/dir/hosts", 0, 1, False),
+                ("C:/dir/hosts.txt", 1, 1, False),
+                ("C:/dir/xhostsy", 4, 1, False),
+            ]
+        )
+        assert window._result_list.count() == 3
+
+    def test_batch_sorted_correctly(self, window: MainWindow):
+        window._add_results_batch(
+            [
+                ("C:/dir/xhostsy", 4, 1, False),
+                ("C:/dir/hosts", 0, 1, False),
+                ("C:/dir/hosts.txt", 1, 1, False),
+            ]
+        )
+        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"]
+
+    def test_batch_updates_status_once(self, window: MainWindow):
+        window._add_results_batch(
+            [
+                ("C:/dir/a.txt", 4, 1, False),
+                ("C:/dir/b.txt", 4, 1, False),
+                ("C:/dir/c.txt", 4, 1, False),
+            ]
+        )
+        assert "3" in window._status_label.text()
+
+    def test_batch_syncs_height(self, window: MainWindow):
+        window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
+        expected = window._SEARCH_HEIGHT + 1 + window._ITEM_HEIGHT + window._RADIUS + window._MARGIN * 2
+        assert window.height() == expected
+
+    def test_batch_ignored_without_worker(self, window: MainWindow):
+        window._worker = None
+        window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
+        assert window._result_list.count() == 0
+
+    def test_batch_empty_list_noop(self, window: MainWindow):
+        window._add_results_batch([])
+        assert window._result_list.count() == 0
+        assert window._status_label.text() == ""
+
+    def test_batch_preserves_is_dir(self, window: MainWindow):
+        window._add_results_batch(
+            [
+                ("C:/dir/folder", 4, 1, True),
+                ("C:/dir/file.txt", 4, 1, False),
+            ]
+        )
+        assert window._result_list.item(0).data(_IS_DIR_ROLE) is True
+        assert window._result_list.item(1).data(_IS_DIR_ROLE) is False
+
+    def test_multiple_batches_merge_correctly(self, window: MainWindow):
+        window._add_results_batch(
+            [
+                ("C:/dir/hosts", 0, 1, False),
+                ("C:/dir/xhostsy", 4, 1, False),
+            ]
+        )
+        window._add_results_batch(
+            [
+                ("C:/dir/hosts.txt", 1, 1, False),
+                ("C:/dir/myhosts", 3, 1, False),
+            ]
+        )
+        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/myhosts", "C:/dir/xhostsy"]

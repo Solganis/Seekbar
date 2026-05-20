@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import bisect
 import platform
 import subprocess
@@ -564,7 +562,7 @@ class MainWindow(QWidget):
         self._sync_height()
 
         worker = SearchWorker(query)
-        worker.found.connect(self._add_result)
+        worker.batch_found.connect(self._add_results_batch)
         worker.finished.connect(self._on_search_done)
         worker.start()
         self._worker = worker
@@ -581,23 +579,32 @@ class MainWindow(QWidget):
             self._worker.wait(3000)
         self._worker = None
 
-    def _add_result(
-        self, path: str, score: int, depth: int = 0, is_dir: bool = False,  # noqa: FBT001, FBT002 - Qt signal emits positional args
-    ) -> None:
-        if self._worker is None:
+    def _add_results_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
+        if self._worker is None or not results:
             return
-        key = (score, depth, len(Path(path).name))
-        pos = bisect.bisect_right(self._sort_keys, key)
-        self._sort_keys.insert(pos, key)
-        item = QListWidgetItem()
-        item.setData(Qt.ItemDataRole.UserRole, path)
-        item.setData(_IS_DIR_ROLE, is_dir)
-        item.setSizeHint(QSize(0, self._ITEM_HEIGHT))
-        self._result_list.insertItem(pos, item)
+        self._result_list.setUpdatesEnabled(False)
+        for path, score, depth, is_dir in results:
+            key = (score, depth, len(Path(path).name))
+            pos = bisect.bisect_right(self._sort_keys, key)
+            self._sort_keys.insert(pos, key)
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, path)
+            item.setData(_IS_DIR_ROLE, is_dir)
+            item.setSizeHint(QSize(0, self._ITEM_HEIGHT))
+            self._result_list.insertItem(pos, item)
+        self._result_list.setUpdatesEnabled(True)
         count = self._result_list.count()
         self._status_label.setText(self._format_count(count))
-        if count <= self._MAX_VISIBLE:
-            self._sync_height()
+        self._sync_height()
+
+    def _add_result(
+        self,
+        path: str,
+        score: int,
+        depth: int = 0,
+        is_dir: bool = False,  # noqa: FBT001, FBT002 - test convenience wrapper with bool params
+    ) -> None:
+        self._add_results_batch([(path, score, depth, is_dir)])
 
     @staticmethod
     def _format_count(count: int) -> str:

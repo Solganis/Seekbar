@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import dataclasses
 from unittest.mock import MagicMock, patch
 
@@ -28,7 +26,7 @@ class TestThemeMode:
 class TestTheme:
     def test_frozen(self):
         with pytest.raises(dataclasses.FrozenInstanceError):
-            DARK_THEME.surface = "#000000"
+            DARK_THEME.surface = "#000000"  # ty: ignore[invalid-assignment] - intentionally testing frozen enforcement
 
     def test_slots(self):
         assert hasattr(DARK_THEME, "__slots__")
