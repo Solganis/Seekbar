@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import ctypes
 import ctypes.wintypes
 import importlib
@@ -10,6 +8,7 @@ import pytest
 
 # noinspection PyProtectedMember
 import seekbar._mft as mft_module
+
 # noinspection PyProtectedMember
 from seekbar._mft import (
     FILE_ATTRIBUTE_DIRECTORY,
@@ -40,7 +39,7 @@ def _build_usn_record(file_ref, parent_ref, name, *, is_dir=False):
     record.FileAttributes = FILE_ATTRIBUTE_DIRECTORY if is_dir else 0
     record.FileNameLength = len(name_bytes)
     record.FileNameOffset = name_offset
-    record_buffer[name_offset:name_offset + len(name_bytes)] = name_bytes
+    record_buffer[name_offset : name_offset + len(name_bytes)] = name_bytes
     return bytes(record_buffer)
 
 

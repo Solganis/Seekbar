@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import platform
 import string
@@ -16,26 +14,29 @@ if TYPE_CHECKING:
     from seekbar._mft import MftRecord
 
 MAX_RESULTS = 10_000
+_BATCH_SIZE = 100
 
-SKIP_DIRS: frozenset[str] = frozenset({
-    ".git",
-    ".hg",
-    ".svn",
-    "node_modules",
-    "__pycache__",
-    ".tox",
-    ".nox",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    ".venv",
-    "venv",
-    "$RECYCLE.BIN",
-    "System Volume Information",
-    ".Trash",
-    ".Spotlight-V100",
-    ".fseventsd",
-})
+SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "__pycache__",
+        ".tox",
+        ".nox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".venv",
+        "venv",
+        "$RECYCLE.BIN",
+        "System Volume Information",
+        ".Trash",
+        ".Spotlight-V100",
+        ".fseventsd",
+    }
+)
 
 _SEPARATORS = str.maketrans("_-", "  ")
 
@@ -202,7 +203,11 @@ class MftSearchStrategy:
                 self._pending[mft_record.file_ref] = mft_record
 
     def _resolve_pending(
-        self, normalized_query: str, on_found: Callable[[str, int, int, bool], object], *, cleanup: bool,
+        self,
+        normalized_query: str,
+        on_found: Callable[[str, int, int, bool], object],
+        *,
+        cleanup: bool,
     ) -> None:
         from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
@@ -237,7 +242,7 @@ class MftSearchStrategy:
 
 
 class SearchWorker(QThread):
-    found = Signal(str, int, int, bool)
+    batch_found = Signal(list)
     finished = Signal(int)
 
     def __init__(self, query: str) -> None:
@@ -245,6 +250,17 @@ class SearchWorker(QThread):
         self._normalized_query = _normalize(query.lower())
         self._tokens = self._normalized_query.split()
         self._count = 0
+        self._buffer: list[tuple[str, int, int, bool]] = []
+
+    def _buffer_result(self, path: str, score: int, depth: int, is_dir: bool) -> None:  # noqa: FBT001 - matches strategy callback signature
+        self._buffer.append((path, score, depth, is_dir))
+        if len(self._buffer) >= _BATCH_SIZE:
+            self._flush_buffer()
+
+    def _flush_buffer(self) -> None:
+        if self._buffer:
+            self.batch_found.emit(self._buffer.copy())
+            self._buffer.clear()
 
     def run(self) -> None:
         roots = discover_roots()
@@ -252,6 +268,7 @@ class SearchWorker(QThread):
             self._run_with_mft_fallback(roots)
         else:
             self._run_walk(roots)
+        self._flush_buffer()
         self.finished.emit(self._count)
 
     def _run_with_mft_fallback(self, roots: list[Path]) -> None:
@@ -264,18 +281,27 @@ class SearchWorker(QThread):
             if is_ntfs(drive):
                 try:
                     self._count += MftSearchStrategy(drive).execute(
-                        self._normalized_query, self._tokens, self.found.emit, self.isInterruptionRequested,
+                        self._normalized_query,
+                        self._tokens,
+                        self._buffer_result,
+                        self.isInterruptionRequested,
                     )
                     continue
                 except OSError:
                     pass
             self._count += WalkSearchStrategy([root]).execute(
-                self._normalized_query, self._tokens, self.found.emit, self.isInterruptionRequested,
+                self._normalized_query,
+                self._tokens,
+                self._buffer_result,
+                self.isInterruptionRequested,
             )
 
     def _run_walk(self, roots: list[Path]) -> None:
         self._count += WalkSearchStrategy(roots).execute(
-            self._normalized_query, self._tokens, self.found.emit, self.isInterruptionRequested,
+            self._normalized_query,
+            self._tokens,
+            self._buffer_result,
+            self.isInterruptionRequested,
         )
 
     def stop(self) -> None:
