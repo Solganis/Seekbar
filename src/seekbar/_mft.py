@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import ctypes
 import ctypes.wintypes
 import sys
@@ -131,12 +129,14 @@ def _stream_mft_batches(handle: int) -> Iterator[list[MftRecord]]:
             name_end = name_start + record.FileNameLength
             name = bytes(read_buffer[name_start:name_end]).decode("utf-16-le")
 
-            batch.append(MftRecord(
-                file_ref=record.FileReferenceNumber & _REF_MASK,
-                parent_ref=record.ParentFileReferenceNumber & _REF_MASK,
-                name=name,
-                is_dir=bool(record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY),
-            ))
+            batch.append(
+                MftRecord(
+                    file_ref=record.FileReferenceNumber & _REF_MASK,
+                    parent_ref=record.ParentFileReferenceNumber & _REF_MASK,
+                    name=name,
+                    is_dir=bool(record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY),
+                )
+            )
             offset += record.RecordLength
 
         enum_data.StartFileReferenceNumber = next_ref
