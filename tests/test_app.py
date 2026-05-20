@@ -149,6 +149,12 @@ class TestSearchLifecycle:
         window._add_result("C:/test/stale.txt", 4)
         assert window._result_list.count() == 0
 
+    def test_done_ignored_without_worker(self, window: MainWindow):
+        window._worker = None
+        window._status_label.setText("searching.")
+        window._on_search_done(0)
+        assert window._status_label.text() == "searching."
+
     def test_clear_text_stops_debounce_timer(self, window: MainWindow):
         window._search_input.setText("query")
         assert window._debounce_timer.isActive()
@@ -159,7 +165,7 @@ class TestSearchLifecycle:
         window._on_search_done(0)
         assert window._status_label.text() == "no results"
         window._search_input.setText("newquery")
-        assert window._status_label.text() == "searching..."
+        assert window._status_label.text() == "searching."
 
     def test_typing_stops_previous_search(self, window: MainWindow):
         mock_worker = MagicMock()
@@ -173,7 +179,7 @@ class TestSearchLifecycle:
         mock_worker = MagicMock()
         monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
         window._start_search()
-        assert window._status_label.text() == "searching..."
+        assert window._status_label.text() == "searching."
         mock_worker.start.assert_called_once()
 
     def test_start_search_empty(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
@@ -182,6 +188,16 @@ class TestSearchLifecycle:
         monkeypatch.setattr(seekbar.app, "SearchWorker", mock_cls)
         window._start_search()
         mock_cls.assert_not_called()
+
+    def test_start_search_starts_animation_if_inactive(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        window._search_input.blockSignals(True)
+        window._search_input.setText("test")
+        window._search_input.blockSignals(False)
+        assert not window._searching_timer.isActive()
+        mock_worker = MagicMock()
+        monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
+        window._start_search()
+        assert window._searching_timer.isActive()
 
     def test_start_search_immediate(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("test")
@@ -238,7 +254,14 @@ class TestWindowDragging:
 
 
 class TestKeyboardNavigation:
-    def test_escape_closes(self, window: MainWindow, qtbot: QtBot):
+    def test_escape_clears_text_first(self, window: MainWindow, qtbot: QtBot):
+        window.show()
+        window._search_input.setText("query")
+        qtbot.keyClick(window, Qt.Key.Key_Escape)
+        assert window._search_input.text() == ""
+        assert window.isVisible()
+
+    def test_escape_closes_when_empty(self, window: MainWindow, qtbot: QtBot):
         window.show()
         qtbot.keyClick(window, Qt.Key.Key_Escape)
         assert not window.isVisible()
@@ -247,6 +270,12 @@ class TestKeyboardNavigation:
         window.show()
         qtbot.mouseClick(window._close_button, Qt.MouseButton.LeftButton)
         assert not window.isVisible()
+
+    def test_tab_does_not_change_focus(self, window: MainWindow):
+        assert window.focusNextPrevChild(True) is True
+
+    def test_backtab_does_not_change_focus(self, window: MainWindow):
+        assert window.focusNextPrevChild(False) is True
 
     def test_non_escape_key(self, window: MainWindow, qtbot: QtBot):
         window.show()
@@ -625,3 +654,219 @@ class TestBatchInsertion:
         )
         paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
         assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/myhosts", "C:/dir/xhostsy"]
+
+
+class TestExtendedNavigation:
+    def test_page_down(self, window: MainWindow, qtbot: QtBot):
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._result_list.setCurrentRow(0)
+        qtbot.keyClick(window, Qt.Key.Key_PageDown)
+        assert window._result_list.currentRow() == window._MAX_VISIBLE
+
+    def test_page_up(self, window: MainWindow, qtbot: QtBot):
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._result_list.setCurrentRow(15)
+        qtbot.keyClick(window, Qt.Key.Key_PageUp)
+        assert window._result_list.currentRow() == 15 - window._MAX_VISIBLE
+
+    def test_page_down_clamps_to_last(self, window: MainWindow, qtbot: QtBot):
+        for i in range(5):
+            window._add_result(f"C:/test/file_{i}.txt", 4)
+        window._result_list.setCurrentRow(3)
+        qtbot.keyClick(window, Qt.Key.Key_PageDown)
+        assert window._result_list.currentRow() == 4
+
+    def test_page_up_clamps_to_first(self, window: MainWindow, qtbot: QtBot):
+        for i in range(5):
+            window._add_result(f"C:/test/file_{i}.txt", 4)
+        window._result_list.setCurrentRow(1)
+        qtbot.keyClick(window, Qt.Key.Key_PageUp)
+        assert window._result_list.currentRow() == 0
+
+    def test_home(self, window: MainWindow, qtbot: QtBot):
+        for i in range(10):
+            window._add_result(f"C:/test/file_{i}.txt", 4)
+        window._result_list.setCurrentRow(5)
+        qtbot.keyClick(window, Qt.Key.Key_Home)
+        assert window._result_list.currentRow() == 0
+
+    def test_end(self, window: MainWindow, qtbot: QtBot):
+        for i in range(10):
+            window._add_result(f"C:/test/file_{i}.txt", 4)
+        window._result_list.setCurrentRow(0)
+        qtbot.keyClick(window, Qt.Key.Key_End)
+        assert window._result_list.currentRow() == 9
+
+    def test_home_empty_list(self, window: MainWindow, qtbot: QtBot):
+        qtbot.keyClick(window, Qt.Key.Key_Home)
+        assert window._result_list.currentRow() == -1
+
+    def test_end_empty_list(self, window: MainWindow, qtbot: QtBot):
+        qtbot.keyClick(window, Qt.Key.Key_End)
+        assert window._result_list.currentRow() == -1
+
+
+class TestSearchingAnimation:
+    def test_start_sets_initial_text(self, window: MainWindow):
+        window._start_searching_animation()
+        assert window._status_label.text() == "searching."
+        assert window._searching_timer.isActive()
+
+    def test_stop_stops_timer(self, window: MainWindow):
+        window._start_searching_animation()
+        window._stop_searching_animation()
+        assert not window._searching_timer.isActive()
+
+    def test_cycle_one_to_two(self, window: MainWindow):
+        window._status_label.setText("searching.")
+        window._animate_searching()
+        assert window._status_label.text() == "searching.."
+
+    def test_cycle_two_to_three(self, window: MainWindow):
+        window._status_label.setText("searching..")
+        window._animate_searching()
+        assert window._status_label.text() == "searching..."
+
+    def test_cycle_three_to_one(self, window: MainWindow):
+        window._status_label.setText("searching...")
+        window._animate_searching()
+        assert window._status_label.text() == "searching."
+
+    def test_clear_text_stops_animation(self, window: MainWindow):
+        window._search_input.setText("query")
+        assert window._searching_timer.isActive()
+        window._search_input.setText("")
+        assert not window._searching_timer.isActive()
+
+    def test_batch_stops_animation(self, window: MainWindow):
+        window._start_searching_animation()
+        assert window._searching_timer.isActive()
+        window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
+        assert not window._searching_timer.isActive()
+
+    def test_search_done_stops_animation(self, window: MainWindow):
+        window._start_searching_animation()
+        assert window._searching_timer.isActive()
+        window._on_search_done(0)
+        assert not window._searching_timer.isActive()
+
+
+class TestErrorFeedback:
+    def test_open_file_failure(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        mock_desktop = MagicMock()
+        mock_desktop.openUrl.return_value = False
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
+        window._open_file_by_path("C:/nonexistent/file.txt")
+        assert window._status_label.text() == "Failed to open file"
+
+    def test_open_folder_oserror(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(platform, "system", lambda: "Windows")
+        monkeypatch.setattr(seekbar.app.subprocess, "run", MagicMock(side_effect=OSError))
+        window._open_folder("C:/test/hosts")
+        assert window._status_label.text() == "Failed to open folder"
+
+    def test_open_folder_linux_failure(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        mock_desktop = MagicMock()
+        mock_desktop.openUrl.return_value = False
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
+        window._open_folder("/home/test/file.txt")
+        assert window._status_label.text() == "Failed to open folder"
+
+
+class TestTempStatus:
+    def test_shows_message(self, window: MainWindow):
+        window._show_temp_status("Error occurred")
+        assert window._status_label.text() == "Error occurred"
+
+    def test_restore_with_results(self, window: MainWindow):
+        window._add_result("C:/test/a.txt", 4)
+        window._add_result("C:/test/b.txt", 4)
+        window._show_temp_status("Error")
+        window._restore_status()
+        assert "2" in window._status_label.text()
+
+    def test_restore_without_results(self, window: MainWindow):
+        window._show_temp_status("Error")
+        window._restore_status()
+        assert window._status_label.text() == ""
+
+
+class TestHelpPopup:
+    def test_initially_hidden(self, window: MainWindow):
+        assert window._help_popup.isHidden()
+
+    def test_toggle_shows(self, window: MainWindow):
+        window._toggle_help()
+        assert not window._help_popup.isHidden()
+
+    def test_toggle_twice_hides(self, window: MainWindow):
+        window._toggle_help()
+        window._toggle_help()
+        assert window._help_popup.isHidden()
+
+    def test_f1_key_toggles(self, window: MainWindow, qtbot: QtBot):
+        qtbot.keyClick(window, Qt.Key.Key_F1)
+        assert not window._help_popup.isHidden()
+
+    def test_text_change_hides_help(self, window: MainWindow):
+        window._toggle_help()
+        assert not window._help_popup.isHidden()
+        window._search_input.setText("query")
+        assert window._help_popup.isHidden()
+
+    def test_hide_help_when_visible(self, window: MainWindow):
+        window._toggle_help()
+        window._hide_help()
+        assert window._help_popup.isHidden()
+
+    def test_hide_help_when_already_hidden(self, window: MainWindow):
+        window._hide_help()
+        assert window._help_popup.isHidden()
+
+    def test_help_content(self, window: MainWindow):
+        html = window._help_popup.text()
+        assert "Esc" in html
+        assert "F1" in html
+        assert "<table" in html
+
+    def test_help_updates_on_theme_switch(self, window: MainWindow):
+        old_html = window._help_popup.text()
+        window._set_theme(LIGHT_THEME)
+        new_html = window._help_popup.text()
+        assert old_html != new_html
+
+    def test_sync_height_with_help(self, window: MainWindow):
+        window._toggle_help()
+        help_height = window._help_popup.sizeHint().height()
+        expected = window._SEARCH_HEIGHT + 1 + help_height + window._RADIUS + window._MARGIN * 2
+        assert window._height_target == expected
+        window._finalize_height()
+        assert window.height() == expected
+
+    def test_help_hides_results_list(self, window: MainWindow):
+        window._add_result("C:/test/file.txt", 4)
+        window._toggle_help()
+        assert window._result_list.isHidden()
+        assert not window._separator.isHidden()
+
+    def test_help_shows_separator_without_results(self, window: MainWindow):
+        window._toggle_help()
+        assert not window._separator.isHidden()
+        assert window._result_list.isHidden()
+
+    def test_batch_skips_sync_when_help_open(self, window: MainWindow):
+        window._toggle_help()
+        window._finalize_height()
+        height_before = window.height()
+        window._add_result("C:/test/file.txt", 4)
+        assert window.height() == height_before
+
+    def test_done_skips_sync_when_help_open(self, window: MainWindow):
+        window._toggle_help()
+        window._finalize_height()
+        height_before = window.height()
+        window._on_search_done(0)
+        assert window.height() == height_before
