@@ -1,3 +1,5 @@
+import ctypes
+import ctypes.wintypes
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -5,19 +7,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import QModelIndex, QPoint, QSettings, Qt
-from PySide6.QtWidgets import QStyleOptionViewItem
+from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import _FONT_FAMILY, _IS_DIR_ROLE, SETTINGS_APP, SETTINGS_ORG, _system_font_family
+from seekbar.app import MainWindow, _FONT_FAMILY, _IS_DIR_ROLE, SETTINGS_APP, SETTINGS_ORG, _system_font_family
 from seekbar.search import MAX_RESULTS
 from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
-
-    from seekbar.app import MainWindow
 
 
 class TestMainWindow:
@@ -346,6 +346,11 @@ class TestKeyboardNavigation:
         initial_mode = window._theme_mode
         qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
         assert window._theme_mode != initial_mode
+
+    def test_ctrl_q_quits(self, window: MainWindow, qtbot: QtBot):
+        with patch.object(seekbar.app.QApplication, "quit") as mock_quit:
+            qtbot.keyClick(window, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
+            mock_quit.assert_called_once()
 
 
 class TestContextMenu:
@@ -812,6 +817,7 @@ class TestHelpPopup:
     def test_help_content(self, window: MainWindow):
         html = window._help_popup.text()
         assert "Esc" in html
+        assert "Ctrl+Q" in html
         assert "F1" in html
         assert "<table" in html
 
@@ -853,3 +859,139 @@ class TestHelpPopup:
         height_before = window.height()
         window._on_search_done(0)
         assert window.height() == height_before
+
+
+class TestSystemTray:
+    def test_tray_exists(self, window: MainWindow):
+        assert isinstance(window._tray, QSystemTrayIcon)
+
+    def test_tray_context_menu_actions(self, window: MainWindow):
+        menu = window._tray.contextMenu()
+        actions = menu.actions()
+        assert len(actions) == 2
+        assert actions[0].text() == "Show / Hide"
+        assert actions[1].text() == "Quit"
+
+    def test_close_hides_to_tray(self, window: MainWindow):
+        window.show()
+        window.close()
+        assert not window.isVisible()
+        assert window._tray.isVisible()
+
+    def test_close_saves_position(self, window: MainWindow):
+        window.show()
+        window.move(100, 200)
+        window.close()
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        assert settings.value("window_x") is not None
+
+    def test_tray_double_click_shows(self, window: MainWindow):
+        window.hide()
+        window._on_tray_activated(QSystemTrayIcon.ActivationReason.DoubleClick)
+        assert window.isVisible()
+
+    def test_tray_double_click_hides(self, window: MainWindow):
+        window.show()
+        window._on_tray_activated(QSystemTrayIcon.ActivationReason.DoubleClick)
+        assert not window.isVisible()
+
+    def test_tray_single_click_ignored(self, window: MainWindow):
+        window.show()
+        window._on_tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+        assert window.isVisible()
+
+    def test_tray_icon_updates_on_theme(self, window: MainWindow):
+        old_key = window._tray.icon().cacheKey()
+        window._set_theme(LIGHT_THEME)
+        assert window._tray.icon().cacheKey() != old_key
+
+    def test_quit_from_tray(self, window: MainWindow):
+        with patch.object(seekbar.app.QApplication, "quit") as mock_quit:
+            window._quit_app()
+        mock_quit.assert_called_once()
+
+    def test_quit_hides_tray(self, window: MainWindow):
+        with patch.object(seekbar.app.QApplication, "quit"):
+            window._quit_app()
+        assert not window._tray.isVisible()
+
+
+class TestToggleVisibility:
+    def test_show_from_hidden(self, window: MainWindow):
+        window.hide()
+        window._toggle_visibility()
+        assert window.isVisible()
+
+    def test_hide_from_visible(self, window: MainWindow):
+        window.show()
+        window._toggle_visibility()
+        assert not window.isVisible()
+
+    def test_show_selects_all_text(self, window: MainWindow):
+        window.hide()
+        window._search_input.setText("query")
+        window._toggle_visibility()
+        assert window._search_input.selectedText() == "query"
+
+
+class TestGlobalHotkey:
+    def test_hotkey_not_registered_by_default(self, window: MainWindow):
+        assert window._hotkey_registered is False
+
+    def test_hotkey_registers_on_init(self, qtbot: QtBot):
+        with patch("seekbar.app._hotkey") as mock_hk:
+            mock_hk.register_hotkey.return_value = True
+            mock_hk.WM_HOTKEY = 0x0312
+            main_window = MainWindow()
+        qtbot.addWidget(main_window)
+        assert main_window._hotkey_registered is True
+        assert main_window._hotkey_filter is not None
+        main_window._tray.hide()
+
+    def test_no_filter_on_registration_failure(self, window: MainWindow):
+        assert window._hotkey_filter is None
+
+    def test_filter_triggers_toggle(self, window: MainWindow):
+        window.show()
+        callback = MagicMock()
+        # noinspection PyProtectedMember
+        hotkey_filter = seekbar.app._HotkeyFilter(callback)
+        msg = ctypes.wintypes.MSG()
+        msg.message = 0x0312
+        result = hotkey_filter.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
+        assert result == (True, 0)
+        callback.assert_called_once()
+
+    def test_filter_ignores_other_messages(self):
+        callback = MagicMock()
+        # noinspection PyProtectedMember
+        hotkey_filter = seekbar.app._HotkeyFilter(callback)
+        msg = ctypes.wintypes.MSG()
+        msg.message = 0x0001
+        result = hotkey_filter.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
+        assert result == (False, 0)
+        callback.assert_not_called()
+
+    def test_filter_ignores_non_windows_events(self):
+        callback = MagicMock()
+        # noinspection PyProtectedMember
+        hotkey_filter = seekbar.app._HotkeyFilter(callback)
+        result = hotkey_filter.nativeEventFilter(b"xcb_generic_event_t", 0)
+        assert result == (False, 0)
+        callback.assert_not_called()
+
+    def test_quit_unregisters_hotkey(self, qtbot: QtBot):
+        with patch("seekbar.app._hotkey") as mock_hk:
+            mock_hk.register_hotkey.return_value = True
+            mock_hk.WM_HOTKEY = 0x0312
+            main_window = MainWindow()
+            qtbot.addWidget(main_window)
+            with patch.object(seekbar.app.QApplication, "quit"):
+                main_window._quit_app()
+            mock_hk.unregister_hotkey.assert_called_once()
+            main_window._tray.hide()
+
+    def test_hotkey_skipped_when_no_module(self, window: MainWindow):
+        with patch("seekbar.app._hotkey", None):
+            window._init_hotkey()
+        assert window._hotkey_registered is False
