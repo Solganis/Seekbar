@@ -1,5 +1,3 @@
-import ctypes
-import ctypes.wintypes
 import sys
 
 if sys.platform != "win32":  # pragma: no cover - Windows-only module
@@ -7,7 +5,9 @@ if sys.platform != "win32":  # pragma: no cover - Windows-only module
     raise ImportError(_err)
 
 # noinspection PyUnresolvedReferences
-user32 = ctypes.windll.user32
+from ctypes import windll  # type: ignore[attr-defined] - Windows-only attribute
+
+user32 = windll.user32
 
 WM_HOTKEY = 0x0312
 MOD_ALT = 0x0001
