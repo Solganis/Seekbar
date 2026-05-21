@@ -58,6 +58,7 @@ if sys.platform == "win32":
 
     from seekbar import hotkey as _hotkey
 
+    # noinspection PyUnresolvedReferences
     class _HotkeyFilter(QAbstractNativeEventFilter):
         def __init__(self, callback: Callable[[], object]) -> None:
             super().__init__()
@@ -540,9 +541,8 @@ class MainWindow(QWidget):
     def _apply_styles(self) -> None:
         theme = self._theme
         menu_qss = self._menu_qss(theme)
-        tray = getattr(self, "_tray", None)
-        if tray is not None:
-            tray_menu = tray.contextMenu()
+        if hasattr(self, "_tray"):
+            tray_menu = self._tray.contextMenu()
             if tray_menu is not None:
                 tray_menu.setStyleSheet(menu_qss)
         self.setStyleSheet(f"""
