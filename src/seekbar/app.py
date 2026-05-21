@@ -82,7 +82,7 @@ _FONT_FAMILY = _system_font_family()
 
 
 class _ResultDelegate(QStyledItemDelegate):
-    _ITEM_HEIGHT = 52
+    _VERTICAL_PADDING = 22
 
     def __init__(self, theme: Theme, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -92,8 +92,13 @@ class _ResultDelegate(QStyledItemDelegate):
         self._name_metrics = QFontMetrics(self._name_font)
         self._path_font = QFont(_FONT_FAMILY, 8)
         self._path_metrics = QFontMetrics(self._path_font)
+        self._item_height = self._name_metrics.height() + self._path_metrics.height() + self._VERTICAL_PADDING
         self._folder_icon = self._make_folder_icon()
         self._file_icon = self._make_file_icon()
+
+    @property
+    def item_height(self) -> int:
+        return self._item_height
 
     @property
     def folder_icon(self) -> QPixmap:
@@ -170,21 +175,24 @@ class _ResultDelegate(QStyledItemDelegate):
         is_dir = index.data(_IS_DIR_ROLE)
         icon = self._folder_icon if is_dir else self._file_icon
         icon_x = option.rect.left() + 12
-        icon_y = option.rect.top() + (self._ITEM_HEIGHT - _ICON_SIZE) // 2
+        icon_y = option.rect.top() + (self._item_height - _ICON_SIZE) // 2
         painter.drawPixmap(icon_x, icon_y, icon)
 
         left = option.rect.left() + 40
         width = option.rect.width() - 52
+        name_h = self._name_metrics.height()
+        path_h = self._path_metrics.height()
+        pad = (self._item_height - name_h - path_h) // 3
 
         painter.setFont(self._name_font)
         painter.setPen(QColor(self._theme.on_surface))
-        name_rect = QRect(left, option.rect.top() + 6, width, 22)
+        name_rect = QRect(left, option.rect.top() + pad, width, name_h + pad)
         elided = self._name_metrics.elidedText(file_path.name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
         painter.setFont(self._path_font)
         painter.setPen(QColor(self._theme.on_surface_variant))
-        path_rect = QRect(left, option.rect.top() + 28, width, 18)
+        path_rect = QRect(left, option.rect.top() + pad + name_h + pad, width, path_h + pad)
         elided = self._path_metrics.elidedText(str(file_path.parent), Qt.TextElideMode.ElideMiddle, width)
         painter.drawText(path_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
@@ -192,13 +200,11 @@ class _ResultDelegate(QStyledItemDelegate):
 
     @override
     def sizeHint(self, _option: QStyleOptionViewItem, _index: QModelIndex | QPersistentModelIndex) -> QSize:
-        return QSize(0, self._ITEM_HEIGHT)
+        return QSize(0, self._item_height)
 
 
 class MainWindow(QWidget):
-    _ITEM_HEIGHT = 52
     _MAX_VISIBLE = 9
-    _SEARCH_HEIGHT = 46
     _MARGIN = 2
     _RADIUS = 12
 
@@ -213,10 +219,39 @@ class MainWindow(QWidget):
         self._theme = resolve_theme(self._theme_mode)
         self.setWindowIcon(self._make_app_icon(self._theme))
 
+        search_font = QFont(_FONT_FAMILY, 11)
+        self._search_height = QFontMetrics(search_font).height() * 2 + 10
+
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
         self._sort_keys: list[tuple[int, int, int]] = []
 
+        self._init_timers()
+
+        self._card = self._build_card()
+        self._search_input = self._build_search_input()
+        self._status_label = self._build_status_label()
+        self._close_button = self._build_close_button()
+        self._separator = self._build_separator()
+        self._result_list = self._build_result_list()
+        self._help_popup = self._build_help_popup()
+        self._assemble_layout()
+        self._apply_styles()
+        self._update_palette()
+        self._sync_height()
+
+        cast("QApplication", QApplication.instance()).styleHints().colorSchemeChanged.connect(
+            self._on_system_theme_changed,
+        )
+
+        saved_pos = self._load_window_position()
+        if saved_pos:
+            self.move(saved_pos)
+        else:
+            screen = QApplication.primaryScreen().geometry()
+            self.move((screen.width() - self.width()) // 2, screen.height() // 4)
+
+    def _init_timers(self) -> None:
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.setInterval(300)
@@ -241,29 +276,6 @@ class MainWindow(QWidget):
         self._height_anim.setDuration(150)
         self._height_anim.valueChanged.connect(self._apply_animated_height)
         self._height_anim.finished.connect(self._finalize_height)
-
-        self._card = self._build_card()
-        self._search_input = self._build_search_input()
-        self._status_label = self._build_status_label()
-        self._close_button = self._build_close_button()
-        self._separator = self._build_separator()
-        self._result_list = self._build_result_list()
-        self._help_popup = self._build_help_popup()
-        self._assemble_layout()
-        self._apply_styles()
-        self._update_palette()
-        self._sync_height()
-
-        cast("QApplication", QApplication.instance()).styleHints().colorSchemeChanged.connect(
-            self._on_system_theme_changed,
-        )
-
-        saved_pos = self._load_window_position()
-        if saved_pos:
-            self.move(saved_pos)
-        else:
-            screen = QApplication.primaryScreen().geometry()
-            self.move((screen.width() - self.width()) // 2, screen.height() // 4)
 
     @staticmethod
     def _load_theme_mode() -> ThemeMode:
@@ -332,7 +344,7 @@ class MainWindow(QWidget):
         search_field = QLineEdit()
         search_field.setObjectName("searchInput")
         search_field.setPlaceholderText("Search all drives...")
-        search_field.setFixedHeight(self._SEARCH_HEIGHT)
+        search_field.setFixedHeight(self._search_height)
         search_field.textChanged.connect(self._on_text_changed)
         search_field.returnPressed.connect(self._activate_selected)
         return search_field
@@ -352,7 +364,7 @@ class MainWindow(QWidget):
         button = QPushButton()
         button.setObjectName("closeButton")
         button.setToolTip("")
-        button.setFixedSize(self._SEARCH_HEIGHT - 12, self._SEARCH_HEIGHT - 12)
+        button.setFixedSize(self._search_height - 12, self._search_height - 12)
         button.setIcon(self._make_close_icon(self._theme))
         button.setIconSize(QSize(14, 14))
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -471,7 +483,7 @@ class MainWindow(QWidget):
                 background-color: transparent;
                 border: none;
                 color: {theme.on_surface};
-                font-size: 15px;
+                font-size: 11pt;
                 font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0 16px;
                 selection-background-color: {theme.primary};
@@ -483,7 +495,7 @@ class MainWindow(QWidget):
             }}
             #statusLabel {{
                 color: {theme.on_surface_variant};
-                font-size: 11px;
+                font-size: 8pt;
                 font-family: "{_FONT_FAMILY}", sans-serif;
                 padding: 0;
                 background-color: transparent;
@@ -491,7 +503,7 @@ class MainWindow(QWidget):
             #closeButton {{
                 background-color: transparent;
                 border: none;
-                border-radius: {(self._SEARCH_HEIGHT - 12) // 2}px;
+                border-radius: {(self._search_height - 12) // 2}px;
             }}
             #closeButton:hover {{
                 background-color: {theme.hover};
@@ -533,7 +545,7 @@ class MainWindow(QWidget):
                 border-radius: 8px;
                 padding: 4px;
                 font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 12px;
+                font-size: 9pt;
             }}
             QMenu::item {{
                 padding: 8px 16px;
@@ -548,7 +560,7 @@ class MainWindow(QWidget):
                 border: none;
                 padding: 12px 16px;
                 font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 12px;
+                font-size: 9pt;
             }}
         """)
 
@@ -565,13 +577,13 @@ class MainWindow(QWidget):
 
         if help_visible:
             help_height = self._help_popup.sizeHint().height()
-            card_height = self._SEARCH_HEIGHT + 1 + help_height + self._RADIUS
+            card_height = self._search_height + 1 + help_height + self._RADIUS
         elif has_results:
             visible = min(count, self._MAX_VISIBLE)
-            self._result_list.setFixedHeight(visible * self._ITEM_HEIGHT)
-            card_height = self._SEARCH_HEIGHT + 1 + visible * self._ITEM_HEIGHT + self._RADIUS
+            self._result_list.setFixedHeight(visible * self._delegate.item_height)
+            card_height = self._search_height + 1 + visible * self._delegate.item_height + self._RADIUS
         else:
-            card_height = self._SEARCH_HEIGHT
+            card_height = self._search_height
 
         target = card_height + self._MARGIN * 2
         if animate and target > self.height():
@@ -729,7 +741,7 @@ class MainWindow(QWidget):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, path)
             item.setData(_IS_DIR_ROLE, is_dir)
-            item.setSizeHint(QSize(0, self._ITEM_HEIGHT))
+            item.setSizeHint(QSize(0, self._delegate.item_height))
             self._result_list.insertItem(pos, item)
         self._result_list.setUpdatesEnabled(True)
         count = self._result_list.count()
