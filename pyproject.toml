@@ -1,7 +1,7 @@
 [project]
 name = "seekbar"
 version = "0.1.0"
-description = "Instant file search for Windows using NTFS MFT enumeration"
+description = "Instant cross-platform file search with native backends"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [{name = "Solganis"}]
@@ -38,7 +38,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["seekbar"]
-omit = ["*/__main__.py"]
+omit = ["*/__main__.py", "*/_spotlight.py", "*/_locate.py"]
 
 [tool.coverage.report]
 show_missing = true

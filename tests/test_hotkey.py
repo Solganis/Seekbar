@@ -1,3 +1,10 @@
+import sys
+
+import pytest
+
+if sys.platform != "win32":
+    pytest.skip("Windows-only tests", allow_module_level=True)
+
 from unittest.mock import MagicMock, patch
 
 # noinspection PyProtectedMember

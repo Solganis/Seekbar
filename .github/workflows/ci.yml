@@ -20,11 +20,37 @@ jobs:
       - run: uv run ty check src/
 
   test:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+      - name: Install Qt dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0
       - run: uv sync
-      - run: uv run pytest tests/ -v --cov=seekbar --cov-report=term-missing --cov-fail-under=100
+      - name: Generate coverage config
+        shell: python
+        run: |
+          import sys
+          omit = ["*/__main__.py"]
+          if sys.platform != "win32":
+              omit += ["*/_mft.py", "*/hotkey.py"]
+          if sys.platform != "darwin":
+              omit.append("*/_spotlight.py")
+          if sys.platform != "linux":
+              omit.append("*/_locate.py")
+          lines = ["[run]", "source = seekbar", "omit ="]
+          lines += [f"    {p}" for p in omit]
+          lines += ["", "[report]", "show_missing = true", "exclude_lines ="]
+          lines += ["    pragma: no cover", "    if TYPE_CHECKING:", "    if __name__"]
+          with open(".coveragerc", "w") as f:
+              f.write("\n".join(lines) + "\n")
+      - name: Run tests
+        run: uv run pytest tests/ -v --cov --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=100
+        env:
+          QT_QPA_PLATFORM: offscreen

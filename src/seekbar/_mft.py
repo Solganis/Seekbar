@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, NamedTuple
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-if sys.platform != "win32":
+if sys.platform != "win32":  # pragma: no cover
     msg = "This module is only available on Windows"
     raise ImportError(msg)
 

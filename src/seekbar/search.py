@@ -264,10 +264,15 @@ class SearchWorker(QThread):
 
     def run(self) -> None:
         roots = discover_roots()
-        if sys.platform == "win32":
-            self._run_with_mft_fallback(roots)
-        else:
-            self._run_walk(roots)
+        match sys.platform:
+            case "win32":
+                self._run_with_mft_fallback(roots)
+            case "darwin":
+                self._run_with_spotlight_fallback(roots)
+            case "linux":
+                self._run_with_locate_fallback(roots)
+            case _:
+                self._run_walk(roots)
         self._flush_buffer()
         self.finished.emit(self._count)
 
@@ -295,6 +300,47 @@ class SearchWorker(QThread):
                 self._buffer_result,
                 self.isInterruptionRequested,
             )
+
+    def _run_with_spotlight_fallback(self, roots: list[Path]) -> None:
+        import shutil  # noqa: PLC0415 - conditional platform import
+
+        # noinspection PyDeprecation
+        if shutil.which("mdfind"):
+            from seekbar._spotlight import SpotlightSearchStrategy  # noqa: PLC0415 - conditional platform import
+
+            try:
+                self._count += SpotlightSearchStrategy().execute(
+                    self._normalized_query,
+                    self._tokens,
+                    self._buffer_result,
+                    self.isInterruptionRequested,
+                )
+            except OSError:
+                pass
+            else:
+                return
+        self._run_walk(roots)
+
+    def _run_with_locate_fallback(self, roots: list[Path]) -> None:
+        import shutil  # noqa: PLC0415 - conditional platform import
+
+        # noinspection PyDeprecation
+        command = shutil.which("plocate") or shutil.which("locate")
+        if command:
+            from seekbar._locate import LocateSearchStrategy  # noqa: PLC0415 - conditional platform import
+
+            try:
+                self._count += LocateSearchStrategy(command).execute(
+                    self._normalized_query,
+                    self._tokens,
+                    self._buffer_result,
+                    self.isInterruptionRequested,
+                )
+            except OSError:
+                pass
+            else:
+                return
+        self._run_walk(roots)
 
     def _run_walk(self, roots: list[Path]) -> None:
         self._count += WalkSearchStrategy(roots).execute(
