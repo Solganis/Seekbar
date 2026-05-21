@@ -1,10 +1,14 @@
+import sys
+
+import pytest
+
+if sys.platform != "win32":
+    pytest.skip("Windows-only tests", allow_module_level=True)
+
 import ctypes
 import ctypes.wintypes
 import importlib
-import sys
 from unittest.mock import MagicMock
-
-import pytest
 
 # noinspection PyProtectedMember
 import seekbar._mft as mft_module

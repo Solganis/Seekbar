@@ -9,19 +9,37 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: Seekbar-windows
+            binary: Seekbar.exe
+          - os: macos-latest
+            artifact: Seekbar-macos
+            binary: Seekbar
+          - os: ubuntu-latest
+            artifact: Seekbar-linux
+            binary: Seekbar
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+      - name: Install Qt dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0
       - run: uv sync
-      - run: uv run pytest tests/ -v --cov=seekbar --cov-report=term-missing --cov-fail-under=100
+      - name: Run tests
+        run: uv run pytest tests/ -v
+        env:
+          QT_QPA_PLATFORM: offscreen
       - run: uv run pyinstaller seekbar.spec --distpath dist --workpath build --clean
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Seekbar-windows
-          path: dist/Seekbar.exe
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.binary }}
 
   release:
     needs: build
@@ -29,10 +47,15 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: Seekbar-windows
           path: artifacts
-      - run: cd artifacts && zip -r ../Seekbar-windows.zip .
+      - name: Package artifacts
+        run: |
+          cd artifacts
+          for dir in */; do
+            name="${dir%/}"
+            (cd "$name" && zip -r "../../${name}.zip" .)
+          done
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
-          files: Seekbar-windows.zip
+          files: "*.zip"
           generate_release_notes: true

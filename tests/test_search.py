@@ -1,5 +1,7 @@
 import os
 import platform
+import sys
+import types
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -7,17 +9,18 @@ from unittest.mock import MagicMock
 import pytest
 
 import seekbar.search
-
-# noinspection PyProtectedMember
-from seekbar._mft import MftRecord
 from seekbar.search import (
     MAX_RESULTS,
     SKIP_DIRS,
-    MftSearchStrategy,
     SearchWorker,
     WalkSearchStrategy,
     discover_roots,
 )
+
+if sys.platform == "win32":
+    # noinspection PyProtectedMember
+    from seekbar._mft import MftRecord
+    from seekbar.search import MftSearchStrategy
 
 
 # noinspection PyProtectedMember
@@ -599,6 +602,7 @@ class TestWalkSearchStrategy:
         assert "hello-world.py" in results
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
 class TestMftSearchStrategy:
     @staticmethod
     def _make_stream_mft(batches):
@@ -769,6 +773,7 @@ class TestMftSearchStrategy:
         assert len(strategy._pending) == 0
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
 class TestIsUnderSkipDir:
     def test_direct_skip_dir(self):
         strategy = MftSearchStrategy("C:")
@@ -807,10 +812,10 @@ class TestIsUnderSkipDir:
 
 class TestSearchWorkerStrategy:
     @pytest.mark.usefixtures("qtbot")
-    def test_walk_on_non_windows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_walk_on_unknown_platform(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (tmp_path / "hosts").touch()
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
-        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="linux"))
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="freebsd"))
 
         worker = SearchWorker("hosts")
         results: list[str] = []
@@ -819,6 +824,7 @@ class TestSearchWorkerStrategy:
 
         assert "hosts" in results
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
     def test_mft_on_ntfs_windows(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [Path("C:\\")])
@@ -838,6 +844,7 @@ class TestSearchWorkerStrategy:
         mock_strategy.assert_called_once_with("C:")
         assert worker._count == 5
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
     def test_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (tmp_path / "hosts").touch()
@@ -858,6 +865,7 @@ class TestSearchWorkerStrategy:
 
         assert "hosts" in results
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
     def test_non_ntfs_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (tmp_path / "hosts").touch()
@@ -866,6 +874,110 @@ class TestSearchWorkerStrategy:
 
         mock_is_ntfs = MagicMock(return_value=False)
         monkeypatch.setattr("seekbar._mft.is_ntfs", mock_is_ntfs)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_spotlight_on_darwin(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [Path("/")])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="darwin"))
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/mdfind" if cmd == "mdfind" else None)
+
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.return_value = 3
+        fake_module = types.ModuleType("seekbar._spotlight")
+        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seekbar._spotlight", fake_module)
+
+        worker = SearchWorker("hosts")
+        worker.run()
+
+        mock_strategy.assert_called_once()
+        assert worker._count == 3
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_spotlight_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="darwin"))
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/mdfind" if cmd == "mdfind" else None)
+
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.side_effect = OSError("failed")
+        fake_module = types.ModuleType("seekbar._spotlight")
+        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seekbar._spotlight", fake_module)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_spotlight_not_found_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="darwin"))
+        monkeypatch.setattr("shutil.which", lambda _cmd: None)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_locate_on_linux(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [Path("/")])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="linux"))
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/plocate" if cmd == "plocate" else None)
+
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.return_value = 4
+        fake_module = types.ModuleType("seekbar._locate")
+        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seekbar._locate", fake_module)
+
+        worker = SearchWorker("hosts")
+        worker.run()
+
+        mock_strategy.assert_called_once_with("/usr/bin/plocate")
+        assert worker._count == 4
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_locate_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="linux"))
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/locate" if cmd == "locate" else None)
+
+        mock_strategy = MagicMock()
+        mock_strategy.return_value.execute.side_effect = OSError("failed")
+        fake_module = types.ModuleType("seekbar._locate")
+        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seekbar._locate", fake_module)
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
+        worker.run()
+
+        assert "hosts" in results
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_locate_not_found_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        (tmp_path / "hosts").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
+        monkeypatch.setattr("seekbar.search.sys", MagicMock(platform="linux"))
+        monkeypatch.setattr("shutil.which", lambda _cmd: None)
 
         worker = SearchWorker("hosts")
         results: list[str] = []
