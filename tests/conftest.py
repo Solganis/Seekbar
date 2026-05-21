@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import QSettings
@@ -30,7 +30,9 @@ def _clear_settings():
 # noinspection PyProtectedMember
 @pytest.fixture
 def window(qtbot: QtBot) -> Iterator[MainWindow]:
-    main_window = MainWindow()
+    with patch("seekbar.app._hotkey") as mock_hk:
+        mock_hk.register_hotkey.return_value = False
+        main_window = MainWindow()
     main_window._worker = MagicMock()
     qtbot.addWidget(main_window)
     yield main_window
@@ -39,3 +41,4 @@ def window(qtbot: QtBot) -> Iterator[MainWindow]:
     main_window._help_hide_timer.stop()
     main_window._temp_status_timer.stop()
     main_window._height_anim.stop()
+    main_window._tray.hide()

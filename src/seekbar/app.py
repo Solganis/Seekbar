@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast, override
 
 from PySide6.QtCore import (
+    QAbstractNativeEventFilter,
+    QByteArray,
     QEasingCurve,
     QPoint,
     QRect,
@@ -41,6 +43,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStyle,
     QStyledItemDelegate,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -48,17 +51,44 @@ from PySide6.QtWidgets import (
 from seekbar.search import MAX_RESULTS, SearchWorker
 from seekbar.theme import Theme, ThemeMode, resolve_theme
 
+if sys.platform == "win32":
+    import ctypes.wintypes
+
+    from seekbar import hotkey as _hotkey
+
+    class _HotkeyFilter(QAbstractNativeEventFilter):
+        def __init__(self, callback: Callable[[], object]) -> None:
+            super().__init__()
+            self._callback = callback
+
+        @override
+        def nativeEventFilter(self, event_type: QByteArray | bytes | bytearray | memoryview, message: int) -> object:
+            if event_type == b"windows_generic_MSG":
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+                if msg.message == _hotkey.WM_HOTKEY:
+                    self._callback()
+                    return True, 0
+            return False, 0
+
+else:  # pragma: no cover - non-Windows fallback
+    _hotkey = None  # type: ignore[assignment]
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from PySide6.QtCore import QModelIndex, QPersistentModelIndex
     from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
-_HELP_SHORTCUTS = (
-    (("Esc",), "Clear / Close"),
-    (("Enter",), "Open selected"),
+_HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("↑", "↓"), "Navigate"),
     (("PgUp", "PgDn"), "Jump page"),
+    (("Enter",), "Open selected"),
+    (("Esc",), "Clear / Hide"),
+    None,
+    (("Ctrl+Alt+S",), "Show / Hide"),
+    (("Ctrl+Q",), "Quit"),
     (("Ctrl+T",), "Toggle theme"),
     (("F1",), "This help"),
 )
@@ -243,6 +273,9 @@ class MainWindow(QWidget):
             self._on_system_theme_changed,
         )
 
+        self._tray = self._build_tray()
+        self._init_hotkey()
+
         saved_pos = self._load_window_position()
         if saved_pos:
             self.move(saved_pos)
@@ -314,6 +347,7 @@ class MainWindow(QWidget):
         self._apply_styles()
         self._update_palette()
         self.setWindowIcon(self._make_app_icon(theme))
+        self._tray.setIcon(self._make_app_icon(theme))
         self._close_button.setIcon(self._make_close_icon(theme))
         self._help_popup.setText(self._help_html())
         self._delegate.set_theme(theme)
@@ -437,14 +471,21 @@ class MainWindow(QWidget):
     def _help_html(self) -> str:
         theme = self._theme
         cap = f"background-color:{theme.outline}; color:{theme.on_surface};"
-        sep = f'<span style="color:{theme.on_surface_variant};"> / </span>'
+        key_sep = f'<span style="color:{theme.on_surface_variant};"> / </span>'
         desc_style = f"color:{theme.on_surface_variant};"
+        divider_style = f"border:none; border-top:1px solid {theme.outline}; margin:2px 0;"
         rows = []
-        for keys, description in _HELP_SHORTCUTS:
+        for entry in _HELP_SHORTCUTS:
+            if entry is None:
+                rows.append(
+                    f'<tr><td colspan="2"><hr style="{divider_style}"></td></tr>'
+                )
+                continue
+            keys, description = entry
             caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
             rows.append(
                 f"<tr>"
-                f'<td align="right" style="padding:3px 0;">{sep.join(caps)}</td>'
+                f'<td align="right" style="padding:3px 0;">{key_sep.join(caps)}</td>'
                 f'<td style="{desc_style} padding:3px 8px;">{description}</td>'
                 f"</tr>"
             )
@@ -470,8 +511,35 @@ class MainWindow(QWidget):
         outer.setContentsMargins(self._MARGIN, self._MARGIN, self._MARGIN, self._MARGIN)
         outer.addWidget(self._card)
 
+    @staticmethod
+    def _menu_qss(theme: Theme) -> str:
+        return f"""
+            QMenu {{
+                background-color: {theme.surface_variant};
+                color: {theme.on_surface};
+                border: 1px solid {theme.outline};
+                border-radius: 8px;
+                padding: 4px;
+                font-family: "{_FONT_FAMILY}", sans-serif;
+                font-size: 9pt;
+            }}
+            QMenu::item {{
+                padding: 8px 16px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background-color: {theme.hover};
+            }}
+        """
+
     def _apply_styles(self) -> None:
         theme = self._theme
+        menu_qss = self._menu_qss(theme)
+        tray = getattr(self, "_tray", None)
+        if tray is not None:
+            tray_menu = tray.contextMenu()
+            if tray_menu is not None:
+                tray_menu.setStyleSheet(menu_qss)
         self.setStyleSheet(f"""
             #card {{
                 background-color: {theme.surface};
@@ -633,6 +701,8 @@ class MainWindow(QWidget):
                 self._activate_selected()
             case Qt.Key.Key_T if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 self._cycle_theme()
+            case Qt.Key.Key_Q if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._quit_app()
             case Qt.Key.Key_F1:
                 self._toggle_help()
             case _:
@@ -704,9 +774,14 @@ class MainWindow(QWidget):
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
-        self._save_window_position(self.pos())
-        self._stop_search()
-        super().closeEvent(event)
+        if self._tray.isVisible():
+            self._save_window_position(self.pos())
+            event.ignore()
+            self.hide()
+        else:
+            self._save_window_position(self.pos())
+            self._stop_search()
+            super().closeEvent(event)
 
     def _stop_search(self) -> None:
         if self._worker and self._worker.isRunning():
@@ -845,6 +920,65 @@ class MainWindow(QWidget):
         if not self._help_popup.isHidden():
             self._help_popup.hide()
             self._sync_height()
+
+    # -- system tray --
+
+    def _build_tray(self) -> QSystemTrayIcon:
+        tray = QSystemTrayIcon(self._make_app_icon(self._theme), self)
+        menu = QMenu()
+        act_toggle = QAction("Show / Hide", self)
+        act_toggle.triggered.connect(self._toggle_visibility)
+        act_quit = QAction("Quit", self)
+        act_quit.triggered.connect(self._quit_app)
+        menu.addAction(act_toggle)
+        menu.addAction(act_quit)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.show()
+        return tray
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._toggle_visibility()
+
+    def _toggle_visibility(self) -> None:
+        if self.isVisible():
+            self.hide()
+        else:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            if sys.platform == "win32":
+                # noinspection PyUnresolvedReferences
+                ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+            self._search_input.setFocus()
+            self._search_input.selectAll()
+
+    def _quit_app(self) -> None:
+        self._save_window_position(self.pos())
+        self._stop_search()
+        if _hotkey is not None and self._hotkey_registered:
+            _hotkey.unregister_hotkey()
+            app = QApplication.instance()
+            if app is not None and self._hotkey_filter is not None:
+                app.removeNativeEventFilter(self._hotkey_filter)
+        self._tray.hide()
+        QApplication.quit()
+
+    # -- global hotkey --
+
+    def _init_hotkey(self) -> None:
+        self._hotkey_registered = False
+        self._hotkey_filter: QAbstractNativeEventFilter | None = None
+        if _hotkey is None:
+            return
+        self._hotkey_registered = _hotkey.register_hotkey()
+        if not self._hotkey_registered:
+            return
+        self._hotkey_filter = _HotkeyFilter(self._toggle_visibility)
+        app = QApplication.instance()
+        if app is not None:
+            app.installNativeEventFilter(self._hotkey_filter)
 
 
 def main() -> None:  # pragma: no cover - entry point starts Qt event loop, not unit-testable
