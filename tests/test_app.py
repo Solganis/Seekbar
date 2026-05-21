@@ -38,13 +38,18 @@ class TestMainWindow:
         assert window._status_label.text() == ""
 
     def test_initial_height(self, window: MainWindow):
-        expected = window._SEARCH_HEIGHT + window._MARGIN * 2
+        expected = window._search_height + window._MARGIN * 2
         assert window.height() == expected
 
     def test_delegate_size_hint(self, window: MainWindow):
-        delegate = window._result_list.itemDelegate()
+        delegate = window._delegate
         size = delegate.sizeHint(QStyleOptionViewItem(), QModelIndex())
-        assert size.height() == 52
+        assert size.height() == delegate.item_height
+
+    def test_delegate_item_height_from_metrics(self, window: MainWindow):
+        delegate = window._delegate
+        expected = delegate._name_metrics.height() + delegate._path_metrics.height() + delegate._VERTICAL_PADDING
+        assert delegate.item_height == expected
 
     def test_delegate_has_cached_fonts(self, window: MainWindow):
         delegate = window._result_list.itemDelegate()
@@ -107,16 +112,15 @@ class TestSortedInsertion:
 class TestHeightSync:
     def test_grows_with_single_result(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
-        expected = window._SEARCH_HEIGHT + 1 + window._ITEM_HEIGHT + window._RADIUS + window._MARGIN * 2
+        item_h = window._delegate.item_height
+        expected = window._search_height + 1 + item_h + window._RADIUS + window._MARGIN * 2
         assert window.height() == expected
 
     def test_capped_at_max_visible(self, window: MainWindow):
         for i in range(window._MAX_VISIBLE + 5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
-
-        expected = (
-            window._SEARCH_HEIGHT + 1 + window._MAX_VISIBLE * window._ITEM_HEIGHT + window._RADIUS + window._MARGIN * 2
-        )
+        item_h = window._delegate.item_height
+        expected = window._search_height + 1 + window._MAX_VISIBLE * item_h + window._RADIUS + window._MARGIN * 2
         assert window.height() == expected
 
 
@@ -616,7 +620,8 @@ class TestBatchInsertion:
 
     def test_batch_syncs_height(self, window: MainWindow):
         window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
-        expected = window._SEARCH_HEIGHT + 1 + window._ITEM_HEIGHT + window._RADIUS + window._MARGIN * 2
+        item_h = window._delegate.item_height
+        expected = window._search_height + 1 + item_h + window._RADIUS + window._MARGIN * 2
         assert window.height() == expected
 
     def test_batch_ignored_without_worker(self, window: MainWindow):
@@ -841,7 +846,7 @@ class TestHelpPopup:
     def test_sync_height_with_help(self, window: MainWindow):
         window._toggle_help()
         help_height = window._help_popup.sizeHint().height()
-        expected = window._SEARCH_HEIGHT + 1 + help_height + window._RADIUS + window._MARGIN * 2
+        expected = window._search_height + 1 + help_height + window._RADIUS + window._MARGIN * 2
         assert window._height_target == expected
         window._finalize_height()
         assert window.height() == expected
