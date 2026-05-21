@@ -1,7 +1,10 @@
 [project]
 name = "seekbar"
 version = "0.1.0"
+description = "Instant file search for Windows using NTFS MFT enumeration"
 requires-python = ">=3.14"
+license = "MIT"
+authors = [{name = "Solganis"}]
 dependencies = ["PySide6>=6.8"]
 
 [project.scripts]
