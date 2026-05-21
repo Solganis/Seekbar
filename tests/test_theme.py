@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtCore import Qt
 
-from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, resolve_theme
+from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, contrast_ratio, resolve_theme
 
 
 class TestThemeMode:
@@ -35,7 +35,7 @@ class TestTheme:
         assert DARK_THEME.surface == "#1E1E1E"
         assert DARK_THEME.surface_variant == "#2C2C2C"
         assert DARK_THEME.on_surface == "#E0E0E0"
-        assert DARK_THEME.on_surface_variant == "#888888"
+        assert DARK_THEME.on_surface_variant == "#959595"
         assert DARK_THEME.primary == "#BB86FC"
         assert DARK_THEME.outline == "#333333"
         assert DARK_THEME.hover == "#252525"
@@ -48,7 +48,7 @@ class TestTheme:
         assert LIGHT_THEME.surface == "#F5F5F5"
         assert LIGHT_THEME.surface_variant == "#E8E8E8"
         assert LIGHT_THEME.on_surface == "#1C1C1C"
-        assert LIGHT_THEME.on_surface_variant == "#6B6B6B"
+        assert LIGHT_THEME.on_surface_variant == "#595959"
         assert LIGHT_THEME.primary == "#6750A4"
         assert LIGHT_THEME.outline == "#C8C8C8"
         assert LIGHT_THEME.hover == "#ECECEC"
@@ -94,3 +94,38 @@ class TestResolveTheme:
     def test_auto_no_app(self):
         with patch("seekbar.theme.QGuiApplication.instance", return_value=None):
             assert resolve_theme(ThemeMode.AUTO) is DARK_THEME
+
+
+class TestContrastRatio:
+    def test_same_color(self):
+        assert contrast_ratio("#000000", "#000000") == pytest.approx(1.0)
+
+    def test_black_on_white(self):
+        assert contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0)
+
+    def test_order_independent(self):
+        ratio_ab = contrast_ratio("#000000", "#FFFFFF")
+        ratio_ba = contrast_ratio("#FFFFFF", "#000000")
+        assert ratio_ab == pytest.approx(ratio_ba)
+
+    def test_known_boundary(self):
+        assert contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.1)
+
+
+class TestWcagContrast:
+    _AA_RATIO = 4.5
+
+    @pytest.mark.parametrize("theme", [DARK_THEME, LIGHT_THEME], ids=["dark", "light"])
+    @pytest.mark.parametrize(
+        ("text_attr", "bg_attr"),
+        [
+            ("on_surface", "surface"),
+            ("on_surface", "surface_variant"),
+            ("on_surface_variant", "surface"),
+            ("on_surface_variant", "surface_variant"),
+        ],
+    )
+    def test_text_on_background(self, theme: Theme, text_attr: str, bg_attr: str):
+        text = getattr(theme, text_attr)
+        background = getattr(theme, bg_attr)
+        assert contrast_ratio(text, background) >= self._AA_RATIO
