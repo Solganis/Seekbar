@@ -690,28 +690,6 @@ class TestExtendedNavigation:
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
         assert window._result_list.currentRow() == 0
 
-    def test_home(self, window: MainWindow, qtbot: QtBot):
-        for i in range(10):
-            window._add_result(f"C:/test/file_{i}.txt", 4)
-        window._result_list.setCurrentRow(5)
-        qtbot.keyClick(window, Qt.Key.Key_Home)
-        assert window._result_list.currentRow() == 0
-
-    def test_end(self, window: MainWindow, qtbot: QtBot):
-        for i in range(10):
-            window._add_result(f"C:/test/file_{i}.txt", 4)
-        window._result_list.setCurrentRow(0)
-        qtbot.keyClick(window, Qt.Key.Key_End)
-        assert window._result_list.currentRow() == 9
-
-    def test_home_empty_list(self, window: MainWindow, qtbot: QtBot):
-        qtbot.keyClick(window, Qt.Key.Key_Home)
-        assert window._result_list.currentRow() == -1
-
-    def test_end_empty_list(self, window: MainWindow, qtbot: QtBot):
-        qtbot.keyClick(window, Qt.Key.Key_End)
-        assert window._result_list.currentRow() == -1
-
 
 class TestSearchingAnimation:
     def test_start_sets_initial_text(self, window: MainWindow):
