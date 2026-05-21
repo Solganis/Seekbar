@@ -222,7 +222,8 @@ class _ResultDelegate(QStyledItemDelegate):
         painter.setFont(self._path_font)
         painter.setPen(QColor(self._theme.on_surface_variant))
         path_rect = QRect(left, option.rect.top() + pad + name_h + pad, width, path_h + pad)
-        elided = self._path_metrics.elidedText(str(file_path.parent), Qt.TextElideMode.ElideMiddle, width)
+        parent_name = file_path.parent.name or str(file_path.parent)
+        elided = self._path_metrics.elidedText(parent_name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(path_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
         painter.restore()
