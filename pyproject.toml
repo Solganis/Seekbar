@@ -51,6 +51,6 @@ dev = [
     "ty>=0.0.38",
     "pytest>=9",
     "pytest-qt>=4.4",
-    "pytest-cov>=6",
+    "pytest-cov>=7.1.0",
     "pyinstaller>=6.20.0",
 ]
