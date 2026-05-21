@@ -59,7 +59,6 @@ _HELP_SHORTCUTS = (
     (("Enter",), "Open selected"),
     (("↑", "↓"), "Navigate"),
     (("PgUp", "PgDn"), "Jump page"),
-    (("Home", "End"), "First / last"),
     (("Ctrl+T",), "Toggle theme"),
     (("F1",), "This help"),
 )
@@ -628,14 +627,7 @@ class MainWindow(QWidget):
                     self._search_input.clear()
                 else:
                     self.close()
-            case (
-                Qt.Key.Key_Down
-                | Qt.Key.Key_Up
-                | Qt.Key.Key_PageDown
-                | Qt.Key.Key_PageUp
-                | Qt.Key.Key_Home
-                | Qt.Key.Key_End
-            ):
+            case Qt.Key.Key_Down | Qt.Key.Key_Up | Qt.Key.Key_PageDown | Qt.Key.Key_PageUp:
                 self._handle_navigation(event.key())
             case Qt.Key.Key_Return | Qt.Key.Key_Enter:
                 self._activate_selected()
@@ -656,13 +648,6 @@ class MainWindow(QWidget):
                 self._move_selection(self._MAX_VISIBLE)
             case Qt.Key.Key_PageUp:
                 self._move_selection(-self._MAX_VISIBLE)
-            case Qt.Key.Key_Home:
-                if self._result_list.count() > 0:
-                    self._result_list.setCurrentRow(0)
-            case Qt.Key.Key_End:
-                count = self._result_list.count()
-                if count > 0:
-                    self._result_list.setCurrentRow(count - 1)
 
     def _move_selection(self, delta: int) -> None:
         count = self._result_list.count()
