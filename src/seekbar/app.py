@@ -9,6 +9,8 @@ from PySide6.QtCore import (
     QAbstractNativeEventFilter,
     QByteArray,
     QEasingCurve,
+    QEvent,
+    QObject,
     QPoint,
     QRect,
     QSettings,
@@ -90,6 +92,7 @@ _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("Ctrl+Alt+S",), "Show / Hide"),
     (("Ctrl+Q",), "Quit"),
     (("Ctrl+T",), "Toggle theme"),
+    (("Alt+Drag",), "Move window"),
     (("F1",), "This help"),
 )
 _ICON_SIZE = 20
@@ -381,6 +384,7 @@ class MainWindow(QWidget):
         search_field.setFixedHeight(self._search_height)
         search_field.textChanged.connect(self._on_text_changed)
         search_field.returnPressed.connect(self._activate_selected)
+        search_field.installEventFilter(self)
         return search_field
 
     def _update_palette(self) -> None:
@@ -670,10 +674,13 @@ class MainWindow(QWidget):
 
     # -- window dragging --
 
+    def _start_drag(self, event: QMouseEvent) -> None:
+        self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
     @override
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._start_drag(event)
 
     @override
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -683,6 +690,28 @@ class MainWindow(QWidget):
     @override
     def mouseReleaseEvent(self, _event: QMouseEvent) -> None:
         self._drag_pos = None
+
+    @override
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self._search_input:
+            event_type = event.type()
+            if event_type == QEvent.Type.MouseButtonPress:
+                mouse_event = cast("QMouseEvent", event)
+                if (
+                    mouse_event.button() == Qt.MouseButton.LeftButton
+                    and mouse_event.modifiers() & Qt.KeyboardModifier.AltModifier
+                ):
+                    self._start_drag(mouse_event)
+                    return True
+            elif self._drag_pos is not None:
+                if event_type == QEvent.Type.MouseMove:
+                    mouse_event = cast("QMouseEvent", event)
+                    self.move(mouse_event.globalPosition().toPoint() - self._drag_pos)
+                    return True
+                if event_type == QEvent.Type.MouseButtonRelease:
+                    self._drag_pos = None
+                    return True
+        return super().eventFilter(watched, event)
 
     @override
     def focusNextPrevChild(self, _next: bool) -> bool:

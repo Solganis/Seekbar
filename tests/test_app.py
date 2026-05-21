@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QModelIndex, QPoint, QSettings, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 
 import seekbar.app
@@ -932,6 +933,67 @@ class TestToggleVisibility:
         window._search_input.setText("query")
         window._toggle_visibility()
         assert window._search_input.selectedText() == "query"
+
+
+class TestAltDrag:
+    def test_alt_click_starts_drag(self, window: MainWindow):
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(110, 110),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.AltModifier,
+        )
+        assert window.eventFilter(window._search_input, event) is True
+        assert window._drag_pos is not None
+
+    def test_non_alt_click_passes_through(self, window: MainWindow):
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(110, 110),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        assert window.eventFilter(window._search_input, event) is False
+
+    def test_alt_click_on_other_widget_passes_through(self, window: MainWindow):
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(110, 110),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.AltModifier,
+        )
+        assert window.eventFilter(window._status_label, event) is False
+
+    def test_mouse_move_during_drag(self, window: MainWindow):
+        window._drag_pos = QPoint(10, 10)
+        move_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(20, 20),
+            QPointF(120, 120),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.AltModifier,
+        )
+        assert window.eventFilter(window._search_input, move_event) is True
+
+    def test_mouse_release_ends_drag(self, window: MainWindow):
+        window._drag_pos = QPoint(10, 10)
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(20, 20),
+            QPointF(120, 120),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        assert window.eventFilter(window._search_input, release_event) is True
+        assert window._drag_pos is None
 
 
 class TestGlobalHotkey:
