@@ -483,9 +483,7 @@ class MainWindow(QWidget):
         rows = []
         for entry in _HELP_SHORTCUTS:
             if entry is None:
-                rows.append(
-                    f'<tr><td colspan="2"><hr style="{divider_style}"></td></tr>'
-                )
+                rows.append(f'<tr><td colspan="2"><hr style="{divider_style}"></td></tr>')
                 continue
             keys, description = entry
             caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
