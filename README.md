@@ -47,6 +47,7 @@ Inspired by [Everything](https://www.voidtools.com/), built from scratch in Pyth
 | Up/Down | Navigate results |
 | Page Up/Down | Jump by page |
 | F1 | Toggle shortcuts help |
+| F2 | Donate links |
 
 ## Installation
 

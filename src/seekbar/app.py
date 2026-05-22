@@ -94,7 +94,20 @@ _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("Ctrl+Q",), "Quit"),
     (("Ctrl+T",), "Toggle theme"),
     (("Alt+Drag",), "Move window"),
+    None,
     (("F1",), "This help"),
+    (("F2",), "About"),
+)
+
+_DONATE_WEB: tuple[tuple[str, str], ...] = (
+    ("GitHub", "https://github.com/Solganis/Seekbar"),
+    ("DonationAlerts", "https://www.donationalerts.com/r/Solganis"),
+    ("Boosty", "https://boosty.to/solganis"),
+)
+
+_DONATE_CRYPTO: tuple[tuple[str, str], ...] = (
+    ("TON", "UQAZDskr7UZE9Hn8Q8asCfmYIsicgL0KS9YNvRJ5NF53OPPo"),
+    ("USDT (TRC-20)", "TG32fyLCxPcTCmtFXayDkvAvAF9goci9st"),
 )
 _ICON_SIZE = 20
 SETTINGS_ORG = "Seekbar"
@@ -269,6 +282,7 @@ class MainWindow(QWidget):
         self._separator = self._build_separator()
         self._result_list = self._build_result_list()
         self._help_popup = self._build_help_popup()
+        self._donate_popup = self._build_donate_popup()
         self._assemble_layout()
         self._apply_styles()
         self._update_palette()
@@ -301,7 +315,7 @@ class MainWindow(QWidget):
         self._help_hide_timer = QTimer(self)
         self._help_hide_timer.setSingleShot(True)
         self._help_hide_timer.setInterval(5000)
-        self._help_hide_timer.timeout.connect(self._hide_help)
+        self._help_hide_timer.timeout.connect(self._hide_popups)
 
         self._temp_status_timer = QTimer(self)
         self._temp_status_timer.setSingleShot(True)
@@ -355,6 +369,7 @@ class MainWindow(QWidget):
         self._tray.setIcon(self._make_app_icon(theme))
         self._close_button.setIcon(self._make_close_icon(theme))
         self._help_popup.setText(self._help_html())
+        self._donate_popup.setText(self._donate_html())
         self._delegate.set_theme(theme)
         self._result_list.viewport().update()
 
@@ -479,21 +494,78 @@ class MainWindow(QWidget):
         cap = f"background-color:{theme.outline}; color:{theme.on_surface};"
         key_sep = f'<span style="color:{theme.on_surface_variant};"> / </span>'
         desc_style = f"color:{theme.on_surface_variant};"
-        divider_style = f"border:none; border-top:1px solid {theme.outline}; margin:2px 0;"
-        rows = []
+        groups: list[list[tuple[tuple[str, ...], str]]] = [[]]
         for entry in _HELP_SHORTCUTS:
             if entry is None:
-                rows.append(f'<tr><td colspan="2"><hr style="{divider_style}"></td></tr>')
-                continue
-            keys, description = entry
+                groups.append([])
+            else:
+                groups[-1].append(entry)
+        left_group, right_group, bottom_group = [*groups, [], []][:3]
+
+        def render_cells(group: list[tuple[tuple[str, ...], str]], index: int) -> str:
+            if index >= len(group):
+                return "<td></td><td></td>"
+            keys, description = group[index]
             caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
-            rows.append(
-                f"<tr>"
+            return (
                 f'<td align="right" style="padding:3px 0;">{key_sep.join(caps)}</td>'
                 f'<td style="{desc_style} padding:3px 8px;">{description}</td>'
-                f"</tr>"
             )
-        return f'<table cellspacing="2">{"".join(rows)}</table>'
+
+        divider_col = f'<td style="border-left:1px solid {theme.outline}; padding:0 8px;"></td>'
+        max_rows = max(len(left_group), len(right_group))
+        rows = [
+            f"<tr>{render_cells(left_group, i)}{divider_col}{render_cells(right_group, i)}</tr>"
+            for i in range(max_rows)
+        ]
+        if bottom_group:
+            hr_style = f"border:none; border-top:1px solid {theme.outline};"
+            divider_row = f'<tr><td colspan="5"><hr style="{hr_style}"></td></tr>'
+            rows.append(divider_row)
+            for keys, description in bottom_group:
+                caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
+                rows.append(
+                    f'<tr><td colspan="5" align="center" style="padding:3px 0;">'
+                    f"{key_sep.join(caps)}"
+                    f'<span style="{desc_style}"> {description}</span>'
+                    f"</td></tr>"
+                )
+        return f'<table cellspacing="2" align="center">{"".join(rows)}</table>'
+
+    def _build_donate_popup(self) -> QLabel:
+        label = QLabel()
+        label.setObjectName("donatePopup")
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setOpenExternalLinks(False)
+        label.linkActivated.connect(self._on_donate_link)
+        label.setText(self._donate_html())
+        label.hide()
+        return label
+
+    def _donate_html(self) -> str:
+        theme = self._theme
+        badge = f"background-color:{theme.outline}; color:{theme.on_surface}; text-decoration:none;"
+        web_links = [f'<a href="{url}" style="{badge}">&nbsp;{label}&nbsp;</a>' for label, url in _DONATE_WEB]
+        crypto_links = [
+            f'<a href="copy:{address}" style="{badge}">&nbsp;{label}&nbsp;</a>' for label, address in _DONATE_CRYPTO
+        ]
+        return (
+            '<table width="100%" cellspacing="4" cellpadding="0">'
+            f'<tr><td align="center">{"&ensp;".join(web_links)}</td></tr>'
+            f'<tr><td align="center">{"&ensp;".join(crypto_links)}</td></tr>'
+            "</table>"
+        )
+
+    def _on_donate_link(self, url: str) -> None:
+        self._help_hide_timer.stop()
+        self._drag_pos = None
+        if url.startswith("copy:"):
+            address = url.removeprefix("copy:")
+            QApplication.clipboard().setText(address)
+            self._show_temp_status("Copied!", 2000)
+        else:
+            self._hide_popups()
+            QDesktopServices.openUrl(QUrl(url))
 
     def _assemble_layout(self) -> None:
         top_row = QHBoxLayout()
@@ -510,6 +582,7 @@ class MainWindow(QWidget):
         self._card_layout.addWidget(self._separator)
         self._card_layout.addWidget(self._result_list)
         self._card_layout.addWidget(self._help_popup)
+        self._card_layout.addWidget(self._donate_popup)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(self._MARGIN, self._MARGIN, self._MARGIN, self._MARGIN)
@@ -624,7 +697,7 @@ class MainWindow(QWidget):
             QMenu::item:selected {{
                 background-color: {theme.hover};
             }}
-            #helpPopup {{
+            #helpPopup, #donatePopup {{
                 background-color: {theme.surface_variant};
                 color: {theme.on_surface};
                 border: none;
@@ -639,15 +712,18 @@ class MainWindow(QWidget):
         count = self._result_list.count()
         has_results = count > 0
         help_visible = not self._help_popup.isHidden()
+        donate_visible = not self._donate_popup.isHidden()
+        popup_visible = help_visible or donate_visible
 
-        self._result_list.setVisible(has_results and not help_visible)
-        self._separator.setVisible(has_results or help_visible)
-        has_content = has_results or help_visible
+        self._result_list.setVisible(has_results and not popup_visible)
+        self._separator.setVisible(has_results or popup_visible)
+        has_content = has_results or popup_visible
         self._card_layout.setContentsMargins(0, 0, 0, self._RADIUS if has_content else 0)
 
-        if help_visible:
-            help_height = self._help_popup.sizeHint().height()
-            card_height = self._search_height + 1 + help_height + self._RADIUS
+        if popup_visible:
+            popup = self._help_popup if help_visible else self._donate_popup
+            popup_height = popup.sizeHint().height()
+            card_height = self._search_height + 1 + popup_height + self._RADIUS
         elif has_results:
             visible = min(count, self._MAX_VISIBLE)
             self._result_list.setFixedHeight(visible * self._delegate.item_height)
@@ -662,13 +738,19 @@ class MainWindow(QWidget):
             self._height_anim.setEndValue(target)
             self._height_anim.start()
         else:
-            self.setFixedHeight(target)
+            self._set_height_preserving_pos(target)
+
+    def _set_height_preserving_pos(self, height: int) -> None:
+        pos = self.pos()
+        self.setFixedHeight(height)
+        if self.pos() != pos:
+            self.move(pos)
 
     def _apply_animated_height(self, value: int) -> None:
-        self.setFixedHeight(int(value))
+        self._set_height_preserving_pos(int(value))
 
     def _finalize_height(self) -> None:
-        self.setFixedHeight(self._height_target)
+        self._set_height_preserving_pos(self._height_target)
 
     # -- window dragging --
 
@@ -733,6 +815,8 @@ class MainWindow(QWidget):
                 self._quit_app()
             case Qt.Key.Key_F1:
                 self._toggle_help()
+            case Qt.Key.Key_F2:
+                self._toggle_donate()
             case _:
                 super().keyPressEvent(event)
 
@@ -766,6 +850,7 @@ class MainWindow(QWidget):
 
     def _on_text_changed(self, text: str) -> None:
         self._help_popup.hide()
+        self._donate_popup.hide()
         if not text.strip():
             self._debounce_timer.stop()
             self._stop_search()
@@ -834,7 +919,7 @@ class MainWindow(QWidget):
         self._result_list.setUpdatesEnabled(True)
         count = self._result_list.count()
         self._status_label.setText(self._format_count(count))
-        if self._help_popup.isHidden():
+        if self._help_popup.isHidden() and self._donate_popup.isHidden():
             self._sync_height()
 
     def _add_result(
@@ -858,7 +943,7 @@ class MainWindow(QWidget):
         self._stop_searching_animation()
         count = self._result_list.count()
         self._status_label.setText("no results" if count == 0 else self._format_count(count))
-        if self._help_popup.isHidden():
+        if self._help_popup.isHidden() and self._donate_popup.isHidden():
             self._sync_height()
 
     # -- searching animation --
@@ -933,10 +1018,11 @@ class MainWindow(QWidget):
         else:
             self._status_label.setText("")
 
-    # -- help popup --
+    # -- popups --
 
     def _toggle_help(self) -> None:
         was_hidden = self._help_popup.isHidden()
+        self._donate_popup.hide()
         self._help_popup.setVisible(was_hidden)
         self._sync_height(animate=was_hidden)
         if was_hidden:
@@ -944,9 +1030,25 @@ class MainWindow(QWidget):
         else:
             self._help_hide_timer.stop()
 
-    def _hide_help(self) -> None:
+    def _toggle_donate(self) -> None:
+        was_hidden = self._donate_popup.isHidden()
+        self._help_popup.hide()
+        self._donate_popup.setVisible(was_hidden)
+        self._sync_height(animate=was_hidden)
+        if was_hidden:
+            self._help_hide_timer.start()
+        else:
+            self._help_hide_timer.stop()
+
+    def _hide_popups(self) -> None:
+        changed = False
         if not self._help_popup.isHidden():
             self._help_popup.hide()
+            changed = True
+        if not self._donate_popup.isHidden():
+            self._donate_popup.hide()
+            changed = True
+        if changed:
             self._sync_height()
 
     # -- system tray --
