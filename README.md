@@ -17,10 +17,6 @@
 - **macOS**: Spotlight indexed search via `mdfind`
 - **Linux**: `plocate`/`locate` indexed search
 
-Inspired by [Everything](https://www.voidtools.com/), built from scratch in Python as a lightweight alternative with fuzzy matching and a modern UI.
-
-**This is a personal passion project**: a way to sharpen my Python skills while trying to build something useful for others.
-
 ## Features
 
 - **Native search backends**: MFT on Windows, Spotlight on macOS, locate on Linux, `os.scandir` fallback everywhere
