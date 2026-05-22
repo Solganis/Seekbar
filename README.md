@@ -33,17 +33,17 @@
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Alt+S | Show/hide window (global) |
-| Enter | Open selected file |
-| Esc | Clear search text, then close window |
-| Ctrl+T | Cycle theme (auto/light/dark) |
-| Ctrl+Q | Quit application |
-| Up/Down | Navigate results |
-| Page Up/Down | Jump by page |
-| F1 | Toggle shortcuts help |
-| F2 | Donate links |
+| Shortcut    | Action                                |
+|-------------|---------------------------------------|
+| Ctrl+Alt+S  | Show/hide window (global)             |
+| Enter       | Open selected file                    |
+| Esc         | Clear search text, then close window  |
+| Ctrl+T      | Cycle theme (auto/light/dark)         |
+| Ctrl+Q      | Quit application                      |
+| Up/Down     | Navigate results                      |
+| Page Up/Down| Jump by page                          |
+| F1          | Toggle shortcuts help                 |
+| F2          | Donate links                          |
 
 ## License
 
