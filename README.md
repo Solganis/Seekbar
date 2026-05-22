@@ -45,35 +45,6 @@
 | F1 | Toggle shortcuts help |
 | F2 | Donate links |
 
-## Installation
-
-### Download
-
-Grab the latest build for your platform from [Releases](https://github.com/Solganis/Seekbar/releases). No installation required, just run.
-
-**Windows**: MFT search requires administrator privileges to read raw disk data. Without elevation, Seekbar falls back to `os.scandir`.
-
-**macOS**: Spotlight (`mdfind`) is available out of the box. No extra setup needed.
-
-**Linux**: install `plocate` (or `locate`) and keep the database updated (`sudo updatedb`). Without it, Seekbar uses `os.scandir`.
-
-### From source
-
-```
-git clone https://github.com/Solganis/Seekbar.git
-cd Seekbar
-uv sync
-uv run seekbar
-```
-
-## Building
-
-```
-uv run pyinstaller seekbar.spec --distpath dist --workpath build --clean
-```
-
-Output: `dist/Seekbar` (or `Seekbar.exe` on Windows). Includes PySide6 runtime.
-
 ## License
 
 [MIT](LICENSE)
