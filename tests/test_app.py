@@ -806,13 +806,13 @@ class TestHelpPopup:
         window._search_input.setText("query")
         assert window._help_popup.isHidden()
 
-    def test_hide_help_when_visible(self, window: MainWindow):
+    def test_hide_popups_when_visible(self, window: MainWindow):
         window._toggle_help()
-        window._hide_help()
+        window._hide_popups()
         assert window._help_popup.isHidden()
 
-    def test_hide_help_when_already_hidden(self, window: MainWindow):
-        window._hide_help()
+    def test_hide_popups_when_already_hidden(self, window: MainWindow):
+        window._hide_popups()
         assert window._help_popup.isHidden()
 
     def test_help_content(self, window: MainWindow):
@@ -821,6 +821,17 @@ class TestHelpPopup:
         assert "Ctrl+Q" in html
         assert "F1" in html
         assert "<table" in html
+
+    def test_help_html_uneven_groups(self, window: MainWindow):
+        shortcuts = (
+            (("A",), "First"),
+            None,
+            (("B",), "Second"),
+            (("C",), "Third"),
+        )
+        with patch("seekbar.app._HELP_SHORTCUTS", shortcuts):
+            html = window._help_html()
+        assert "<td></td><td></td>" in html
 
     def test_help_updates_on_theme_switch(self, window: MainWindow):
         old_html = window._help_popup.text()
@@ -860,6 +871,87 @@ class TestHelpPopup:
         height_before = window.height()
         window._on_search_done(0)
         assert window.height() == height_before
+
+
+class TestDonatePopup:
+    def test_f2_toggles_donate_popup(self, window: MainWindow, qtbot):
+        assert window._donate_popup.isHidden()
+        qtbot.keyClick(window, Qt.Key.Key_F2)
+        assert not window._donate_popup.isHidden()
+        qtbot.keyClick(window, Qt.Key.Key_F2)
+        assert window._donate_popup.isHidden()
+
+    def test_f2_hides_help(self, window: MainWindow):
+        window._toggle_help()
+        assert not window._help_popup.isHidden()
+        window._toggle_donate()
+        assert window._help_popup.isHidden()
+        assert not window._donate_popup.isHidden()
+
+    def test_f1_hides_donate(self, window: MainWindow):
+        window._toggle_donate()
+        assert not window._donate_popup.isHidden()
+        window._toggle_help()
+        assert window._donate_popup.isHidden()
+        assert not window._help_popup.isHidden()
+
+    def test_donate_content(self, window: MainWindow):
+        html = window._donate_popup.text()
+        assert "GitHub" in html
+        assert "DonationAlerts" in html
+        assert "Boosty" in html
+        assert "TON" in html
+        assert "USDT" in html
+
+    def test_donate_link_opens_url(self, window: MainWindow):
+        with patch("seekbar.app.QDesktopServices.openUrl") as mock_open:
+            window._on_donate_link("https://boosty.to/solganis")
+        mock_open.assert_called_once()
+
+    def test_donate_copy_to_clipboard(self, window: MainWindow):
+        address = "UQAZDskr7UZE9Hn8Q8asCfmYIsicgL0KS9YNvRJ5NF53OPPo"
+        window._on_donate_link(f"copy:{address}")
+        assert seekbar.app.QApplication.clipboard().text() == address
+        assert window._status_label.text() == "Copied!"
+
+    def test_donate_updates_on_theme_switch(self, window: MainWindow):
+        old_html = window._donate_popup.text()
+        window._set_theme(LIGHT_THEME)
+        new_html = window._donate_popup.text()
+        assert old_html != new_html
+
+    def test_text_change_hides_donate(self, window: MainWindow):
+        window._toggle_donate()
+        assert not window._donate_popup.isHidden()
+        window._search_input.setText("query")
+        assert window._donate_popup.isHidden()
+
+    def test_hide_popups_hides_donate(self, window: MainWindow):
+        window._toggle_donate()
+        window._hide_popups()
+        assert window._donate_popup.isHidden()
+
+    def test_set_height_restores_position(self, window: MainWindow):
+        original_pos = QPoint(100, 200)
+        window.move(original_pos)
+        shifted_pos = QPoint(100, 0)
+        original_set_fixed = MainWindow.setFixedHeight
+
+        def shifting_set_fixed(self_widget, height):
+            original_set_fixed(self_widget, height)
+            self_widget.move(shifted_pos)
+
+        with patch.object(MainWindow, "setFixedHeight", shifting_set_fixed):
+            window._set_height_preserving_pos(300)
+        assert window.pos() == original_pos
+
+    def test_sync_height_with_donate(self, window: MainWindow):
+        window._toggle_donate()
+        donate_height = window._donate_popup.sizeHint().height()
+        expected = window._search_height + 1 + donate_height + window._RADIUS + window._MARGIN * 2
+        assert window._height_target == expected
+        window._finalize_height()
+        assert window.height() == expected
 
 
 class TestSystemTray:
