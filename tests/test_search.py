@@ -891,7 +891,7 @@ class TestSearchWorkerStrategy:
         mock_strategy = MagicMock()
         mock_strategy.return_value.execute.return_value = 3
         fake_module = types.ModuleType("seekbar._spotlight")
-        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute] - dynamic attr on ModuleType stub
         monkeypatch.setitem(sys.modules, "seekbar._spotlight", fake_module)
 
         worker = SearchWorker("hosts")
@@ -910,7 +910,7 @@ class TestSearchWorkerStrategy:
         mock_strategy = MagicMock()
         mock_strategy.return_value.execute.side_effect = OSError("failed")
         fake_module = types.ModuleType("seekbar._spotlight")
-        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        fake_module.SpotlightSearchStrategy = mock_strategy  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute] - dynamic attr on ModuleType stub
         monkeypatch.setitem(sys.modules, "seekbar._spotlight", fake_module)
 
         worker = SearchWorker("hosts")
@@ -943,7 +943,7 @@ class TestSearchWorkerStrategy:
         mock_strategy = MagicMock()
         mock_strategy.return_value.execute.return_value = 4
         fake_module = types.ModuleType("seekbar._locate")
-        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute] - dynamic attr on ModuleType stub
         monkeypatch.setitem(sys.modules, "seekbar._locate", fake_module)
 
         worker = SearchWorker("hosts")
@@ -962,7 +962,7 @@ class TestSearchWorkerStrategy:
         mock_strategy = MagicMock()
         mock_strategy.return_value.execute.side_effect = OSError("failed")
         fake_module = types.ModuleType("seekbar._locate")
-        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]
+        fake_module.LocateSearchStrategy = mock_strategy  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute] - dynamic attr on ModuleType stub
         monkeypatch.setitem(sys.modules, "seekbar._locate", fake_module)
 
         worker = SearchWorker("hosts")
