@@ -1,8 +1,12 @@
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # noinspection PyProtectedMember
 from seekbar._subprocess_search import subprocess_search
@@ -10,7 +14,7 @@ from seekbar.search import MAX_RESULTS
 
 
 class _FakeProcess:
-    def __init__(self, lines: list[str]):
+    def __init__(self, lines: Sequence[str]):
         self.stdout = iter(lines)
         self._terminated = False
 
