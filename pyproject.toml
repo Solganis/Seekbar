@@ -50,8 +50,8 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.14",
-    "ty>=0.0.38",
+    "ruff>=0.15.16",
+    "ty>=0.0.46",
     "pytest>=9",
     "pytest-qt>=4.5.0",
     "pytest-cov>=6",
