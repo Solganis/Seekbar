@@ -5,7 +5,7 @@ description = "Instant cross-platform file search with native backends"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [{name = "Solganis"}]
-dependencies = ["PySide6>=6.8"]
+dependencies = ["PySide6>=6.11.1"]
 
 [project.scripts]
 seekbar = "seekbar.app:main"
@@ -50,10 +50,11 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.16",
-    "ty>=0.0.46",
-    "pytest>=9",
+    "ruff>=0.15.18",
+    "ty>=0.0.51",
+    "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
-    "pytest-cov>=6",
-    "pyinstaller>=6.20.0",
+    "pytest-cov>=7.1.0",
+    "pyinstaller>=6.21.0",
+    "assertpy2>=2.5.1",
 ]
