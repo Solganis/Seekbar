@@ -1,4 +1,5 @@
 import bisect
+import json
 import platform
 import subprocess
 import sys
@@ -254,10 +255,48 @@ class _ResultDelegate(QStyledItemDelegate):
 _NO_PARENT = QModelIndex()
 
 
+class _RecencyStore:
+    """Persists recently opened paths (most-recent-first) so repeat results rank higher."""
+
+    _LIMIT = 500
+    _KEY = "recent_paths"
+
+    def __init__(self) -> None:
+        self._paths = self._load()
+        self._ranks = {path: index for index, path in enumerate(self._paths)}
+
+    @classmethod
+    def _load(cls) -> list[str]:
+        raw = QSettings(SETTINGS_ORG, SETTINGS_APP).value(cls._KEY, "[]")
+        if not isinstance(raw, str):
+            return []
+        try:
+            stored = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(stored, list):
+            return []
+        return [path for path in stored if isinstance(path, str)]
+
+    def rank(self, path: str) -> int:
+        return self._ranks.get(path, self._LIMIT)
+
+    def record(self, path: str) -> None:
+        if self._paths[:1] == [path]:
+            return
+        if path in self._ranks:
+            self._paths.remove(path)
+        self._paths.insert(0, path)
+        del self._paths[self._LIMIT :]
+        self._ranks = {stored: index for index, stored in enumerate(self._paths)}
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue(self._KEY, json.dumps(self._paths))
+
+
 class _ResultModel(QAbstractListModel):
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, recency: _RecencyStore, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._keys: list[tuple[int, int, int]] = []
+        self._recency = recency
+        self._keys: list[tuple[int, int, int, int]] = []
         self._rows: list[tuple[str, bool]] = []
 
     @override
@@ -276,8 +315,9 @@ class _ResultModel(QAbstractListModel):
 
     def add_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
         for path, score, depth, is_dir in results:
-            # Basename length without allocating a Path, used only as a sort tiebreaker.
-            key = (score, depth, len(path) - max(path.rfind("\\"), path.rfind("/")) - 1)
+            # Basename length without allocating a Path; recency breaks ties within a score tier.
+            name_length = len(path) - max(path.rfind("\\"), path.rfind("/")) - 1
+            key = (score, self._recency.rank(path), depth, name_length)
             pos = bisect.bisect_right(self._keys, key)
             self.beginInsertRows(_NO_PARENT, pos, pos)
             self._keys.insert(pos, key)
@@ -315,6 +355,7 @@ class MainWindow(QWidget):
 
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
+        self._recency = _RecencyStore()
 
         self._init_timers()
 
@@ -512,7 +553,7 @@ class MainWindow(QWidget):
         return separator
 
     def _build_result_list(self) -> QListView:
-        self._result_model = _ResultModel(self)
+        self._result_model = _ResultModel(self._recency, self)
         result_list = QListView()
         result_list.setObjectName("resultList")
         result_list.setModel(self._result_model)
@@ -1025,7 +1066,9 @@ class MainWindow(QWidget):
         self._open_file_by_path(self._result_model.path_at(index.row()))
 
     def _open_file_by_path(self, path: str) -> None:
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+            self._recency.record(path)
+        else:
             self._show_temp_status("Failed to open file")
 
     def _open_folder(self, path: str) -> None:

@@ -1,5 +1,6 @@
 import ctypes
 import ctypes.wintypes
+import json
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ from seekbar.app import (
     MainWindow,
     _FONT_FAMILY,
     _IS_DIR_ROLE,
+    _RecencyStore,
     _ResultModel,
     SETTINGS_APP,
     SETTINGS_ORG,
@@ -383,6 +385,11 @@ class TestFileOpening:
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_file_by_path("C:/test/hosts")
         mock_desktop.openUrl.assert_called_once()
+
+    def test_open_records_recency(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.app, "QDesktopServices", MagicMock())
+        window._open_file_by_path("C:/test/hosts")
+        assert_that(window._recency.rank("C:/test/hosts")).is_equal_to(0)
 
     def test_open_folder_windows(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
@@ -1157,7 +1164,7 @@ class TestGlobalHotkey:
 class TestResultModel:
     @pytest.fixture
     def model(self, qtbot: QtBot) -> _ResultModel:  # noqa: ARG002 - qtbot ensures a QApplication exists
-        instance = _ResultModel()
+        instance = _ResultModel(_RecencyStore())
         instance.add_batch([("C:/dir/file.txt", 0, 0, False)])
         return instance
 
@@ -1172,3 +1179,64 @@ class TestResultModel:
 
     def test_row_count_with_valid_parent_is_zero(self, model: _ResultModel):
         assert_that(model.rowCount(model.index(0))).is_equal_to(0)
+
+    def test_recency_breaks_score_tie(self, qtbot: QtBot):  # noqa: ARG002 - qtbot ensures a QApplication exists
+        recency = _RecencyStore()
+        recency.record("C:/dir/b.txt")
+        model = _ResultModel(recency)
+        model.add_batch([("C:/dir/a.txt", 4, 1, False), ("C:/dir/b.txt", 4, 1, False)])
+        assert_that(model.path_at(0)).is_equal_to("C:/dir/b.txt")
+        assert_that(model.path_at(1)).is_equal_to("C:/dir/a.txt")
+
+
+class TestRecencyStore:
+    def test_empty_history_ranks_at_limit(self):
+        assert_that(_RecencyStore().rank("C:/x")).is_equal_to(_RecencyStore._LIMIT)
+
+    def test_record_then_rank_is_zero(self):
+        store = _RecencyStore()
+        store.record("C:/a")
+        assert_that(store.rank("C:/a")).is_equal_to(0)
+
+    def test_record_moves_existing_to_front(self):
+        store = _RecencyStore()
+        store.record("C:/a")
+        store.record("C:/b")
+        assert_that(store.rank("C:/a")).is_equal_to(1)
+        store.record("C:/a")
+        assert_that(store.rank("C:/a")).is_equal_to(0)
+        assert_that(store.rank("C:/b")).is_equal_to(1)
+
+    def test_record_same_path_twice_is_noop(self):
+        store = _RecencyStore()
+        store.record("C:/a")
+        store.record("C:/a")
+        assert_that(store.rank("C:/a")).is_equal_to(0)
+
+    def test_persists_across_instances(self):
+        _RecencyStore().record("C:/a")
+        assert_that(_RecencyStore().rank("C:/a")).is_equal_to(0)
+
+    def test_non_string_raw_is_ignored(self):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("recent_paths", 123)
+        assert_that(_RecencyStore().rank("C:/a")).is_equal_to(_RecencyStore._LIMIT)
+
+    def test_invalid_json_is_ignored(self):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("recent_paths", "not json{")
+        assert_that(_RecencyStore().rank("C:/a")).is_equal_to(_RecencyStore._LIMIT)
+
+    def test_non_list_json_is_ignored(self):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("recent_paths", '{"x": 1}')
+        assert_that(_RecencyStore().rank("C:/a")).is_equal_to(_RecencyStore._LIMIT)
+
+    def test_non_string_items_are_filtered(self):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("recent_paths", '["C:/a", 5]')
+        assert_that(_RecencyStore().rank("C:/a")).is_equal_to(0)
+
+    def test_truncates_at_limit(self):
+        paths = [f"C:/p{i}" for i in range(_RecencyStore._LIMIT)]
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("recent_paths", json.dumps(paths))
+        store = _RecencyStore()
+        store.record("C:/new")
+        assert_that(store.rank("C:/new")).is_equal_to(0)
+        assert_that(store.rank("C:/p499")).is_equal_to(_RecencyStore._LIMIT)
