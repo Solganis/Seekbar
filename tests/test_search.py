@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from assertpy2 import assert_that
 
 import seekbar.search
 from seekbar.search import (
@@ -50,48 +51,48 @@ class _FakeScandir:
 
 class TestNormalize:
     def test_underscore_to_space(self):
-        assert _normalize("hello_world") == "hello world"
+        assert_that(_normalize("hello_world")).is_equal_to("hello world")
 
     def test_hyphen_to_space(self):
-        assert _normalize("hello-world") == "hello world"
+        assert_that(_normalize("hello-world")).is_equal_to("hello world")
 
     def test_mixed_separators(self):
-        assert _normalize("my_file-name") == "my file name"
+        assert_that(_normalize("my_file-name")).is_equal_to("my file name")
 
     def test_no_separators(self):
-        assert _normalize("helloworld") == "helloworld"
+        assert_that(_normalize("helloworld")).is_equal_to("helloworld")
 
     def test_empty_string(self):
-        assert _normalize("") == ""
+        assert_that(_normalize("")).is_empty()
 
 
 class TestMatches:
     def test_exact_substring(self):
-        assert _matches("hello_world", "hello world", ["hello", "world"]) is True
+        assert_that(_matches("hello_world", "hello world", ["hello", "world"])).is_true()
 
     def test_no_match(self):
-        assert _matches("foobar", "hello world", ["hello", "world"]) is False
+        assert_that(_matches("foobar", "hello world", ["hello", "world"])).is_false()
 
     def test_token_only_different_order(self):
-        assert _matches("world_hello", "hello world", ["hello", "world"]) is True
+        assert_that(_matches("world_hello", "hello world", ["hello", "world"])).is_true()
 
     def test_single_token_substring_match(self):
-        assert _matches("worldhello", "hello", ["hello"]) is True
+        assert_that(_matches("worldhello", "hello", ["hello"])).is_true()
 
     def test_single_token_no_match(self):
-        assert _matches("foobar", "hello", ["hello"]) is False
+        assert_that(_matches("foobar", "hello", ["hello"])).is_false()
 
     def test_single_token_substring(self):
-        assert _matches("say_hello_there", "hello", ["hello"]) is True
+        assert_that(_matches("say_hello_there", "hello", ["hello"])).is_true()
 
     def test_hyphen_matches_underscore_query(self):
-        assert _matches("hello-world", "hello world", ["hello", "world"]) is True
+        assert_that(_matches("hello-world", "hello world", ["hello", "world"])).is_true()
 
     def test_concatenated_tokens_match(self):
-        assert _matches("helloworld", "hello world", ["hello", "world"]) is True
+        assert_that(_matches("helloworld", "hello world", ["hello", "world"])).is_true()
 
     def test_tokens_scattered_in_name(self):
-        assert _matches("my_hello_big_world", "hello world", ["hello", "world"]) is True
+        assert_that(_matches("my_hello_big_world", "hello world", ["hello", "world"])).is_true()
 
 
 class TestScore:
@@ -110,52 +111,52 @@ class TestScore:
         ],
     )
     def test_score_levels(self, query: str, name: str, expected: int):
-        assert _score(query, name) == expected
+        assert_that(_score(query, name)).is_equal_to(expected)
 
     def test_stem_match_uses_last_dot(self):
-        assert _score("hosts.txt", "hosts.txt.bak") == 1
+        assert_that(_score("hosts.txt", "hosts.txt.bak")).is_equal_to(1)
 
     def test_no_extension_exact_match(self):
-        assert _score("makefile", "Makefile") == 0
+        assert_that(_score("makefile", "Makefile")).is_equal_to(0)
 
     def test_normalized_exact_match(self):
-        assert _score("hello world", "hello_world") == 0
+        assert_that(_score("hello world", "hello_world")).is_equal_to(0)
 
     def test_normalized_stem_match(self):
-        assert _score("hello world", "hello_world.txt") == 1
+        assert_that(_score("hello world", "hello_world.txt")).is_equal_to(1)
 
     def test_normalized_starts_with(self):
-        assert _score("hello world", "hello_world_extra") == 2
+        assert_that(_score("hello world", "hello_world_extra")).is_equal_to(2)
 
     def test_normalized_ends_with(self):
-        assert _score("hello world", "my_hello_world") == 3
+        assert_that(_score("hello world", "my_hello_world")).is_equal_to(3)
 
     def test_normalized_contains(self):
-        assert _score("hello world", "my_hello_world_file.txt") == 4
+        assert_that(_score("hello world", "my_hello_world_file.txt")).is_equal_to(4)
 
     def test_token_only_score(self):
-        assert _score("hello world", "world_hello") == 5
+        assert_that(_score("hello world", "world_hello")).is_equal_to(5)
 
 
 class TestDiscoverRoots:
     def test_returns_nonempty_list(self):
         roots = discover_roots()
-        assert len(roots) > 0
-        assert all(isinstance(r, Path) for r in roots)
+        assert_that(roots).is_not_empty()
+        assert_that(roots).all_satisfy(lambda root: isinstance(root, Path))
 
     def test_all_roots_exist(self):
-        assert all(r.exists() for r in discover_roots())
+        assert_that(discover_roots()).all_satisfy(lambda root: root.exists())
 
     def test_windows_includes_c_drive(self):
         if platform.system() != "Windows":
             pytest.skip("Windows-only")
-        assert Path("C:\\") in discover_roots()
+        assert_that(discover_roots()).contains(Path("C:\\"))
 
     def test_unknown_platform_returns_root(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "UnknownOS")
         with pytest.warns(UserWarning, match="Unsupported platform"):
             roots = discover_roots()
-        assert roots == [Path("/")]
+        assert_that(roots).is_equal_to([Path("/")])
 
     def test_darwin_without_volumes(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
@@ -171,7 +172,7 @@ class TestDiscoverRoots:
 
         monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
-        assert len(roots) == 1
+        assert_that(roots).is_length(1)
 
     def test_darwin_with_volumes(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
@@ -192,8 +193,8 @@ class TestDiscoverRoots:
 
         monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
-        assert len(roots) == 2
-        assert mock_usb in roots
+        assert_that(roots).is_length(2)
+        assert_that(roots).contains(mock_usb)
 
     def test_linux_without_mounts(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -212,7 +213,7 @@ class TestDiscoverRoots:
 
         monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
-        assert len(roots) == 1
+        assert_that(roots).is_length(1)
 
     def test_linux_with_mounts(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -234,8 +235,8 @@ class TestDiscoverRoots:
 
         monkeypatch.setattr(seekbar.search, "Path", fake_path)
         roots = discover_roots()
-        assert len(roots) == 2
-        assert mock_usb in roots
+        assert_that(roots).is_length(2)
+        assert_that(roots).contains(mock_usb)
 
 
 class TestSearchWorker:
@@ -258,7 +259,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert sorted(results) == ["hosts", "hosts.txt", "myhosts"]
+        assert_that(sorted(results)).is_equal_to(["hosts", "hosts.txt", "myhosts"])
 
     def test_excludes_non_matching(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
@@ -269,7 +270,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert "readme.txt" not in results
+        assert_that(results).does_not_contain("readme.txt")
 
     def test_emits_correct_scores(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
@@ -285,9 +286,9 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert scores["hosts"] == 0
-        assert scores["hosts.txt"] == 1
-        assert scores["myhosts"] == 3
+        assert_that(scores["hosts"]).is_equal_to(0)
+        assert_that(scores["hosts.txt"]).is_equal_to(1)
+        assert_that(scores["myhosts"]).is_equal_to(3)
 
     def test_emits_depth(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
@@ -305,7 +306,7 @@ class TestSearchWorker:
 
         top_level_depth = depths["hosts"]
         sub_depth = depths["myhosts"]
-        assert sub_depth > top_level_depth
+        assert_that(sub_depth).is_greater_than(top_level_depth)
 
     def test_finished_emits_total(self, qtbot: QtBot, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [search_tree])
@@ -314,7 +315,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000) as blocker:
             worker.start()
 
-        assert blocker.args == [3]
+        assert_that(blocker.args).is_equal_to([3])
 
     @pytest.mark.usefixtures("qtbot")
     def test_stop_interrupts(self, search_tree: Path, monkeypatch: pytest.MonkeyPatch):
@@ -322,7 +323,7 @@ class TestSearchWorker:
         worker = SearchWorker("hosts")
         worker.start()
         worker.stop()
-        assert worker.wait(3000)
+        assert_that(worker.wait(3000)).is_true()
 
     def test_max_results_limit(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         for i in range(10):
@@ -337,7 +338,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert len(count) == 3
+        assert_that(count).is_length(3)
 
     def test_max_results_stops_across_roots(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         root1 = tmp_path / "root1"
@@ -358,7 +359,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert len(count) == 3
+        assert_that(count).is_length(3)
 
     def test_scandir_permission_error(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
@@ -368,7 +369,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000) as blocker:
             worker.start()
 
-        assert blocker.args == [0]
+        assert_that(blocker.args).is_equal_to([0])
 
     def test_is_dir_os_error(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [tmp_path])
@@ -387,7 +388,7 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert len(results) == 1
+        assert_that(results).is_length(1)
 
     def test_finds_underscore_with_space_query(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (tmp_path / "hello_world.txt").touch()
@@ -402,9 +403,9 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert "hello_world.txt" in results
-        assert "hello-world.py" in results
-        assert "helloworld.js" in results
+        assert_that(results).contains("hello_world.txt")
+        assert_that(results).contains("hello-world.py")
+        assert_that(results).contains("helloworld.js")
 
     def test_token_order_independent(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (tmp_path / "world_hello.txt").touch()
@@ -425,8 +426,8 @@ class TestSearchWorker:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert "world_hello.txt" in results
-        assert scores["world_hello.txt"] == 5
+        assert_that(results).contains("world_hello.txt")
+        assert_that(scores["world_hello.txt"]).is_equal_to(5)
 
 
 class TestSkipDirs:
@@ -447,9 +448,9 @@ class TestSkipDirs:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert "hosts_root" in results
-        assert "hosts_config" not in results
-        assert "hosts_pkg" not in results
+        assert_that(results).contains("hosts_root")
+        assert_that(results).does_not_contain("hosts_config")
+        assert_that(results).does_not_contain("hosts_pkg")
 
     def test_does_not_skip_regular_dirs(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         regular = tmp_path / "subdir"
@@ -464,12 +465,12 @@ class TestSkipDirs:
         with qtbot.waitSignal(worker.finished, timeout=5000):
             worker.start()
 
-        assert "hosts_sub" in results
+        assert_that(results).contains("hosts_sub")
 
     def test_skip_dirs_is_frozenset(self):
-        assert isinstance(SKIP_DIRS, frozenset)
-        assert ".git" in SKIP_DIRS
-        assert "node_modules" in SKIP_DIRS
+        assert_that(SKIP_DIRS).is_instance_of(frozenset)
+        assert_that(SKIP_DIRS).contains(".git")
+        assert_that(SKIP_DIRS).contains("node_modules")
 
 
 class TestIterativeWalk:
@@ -488,7 +489,7 @@ class TestIterativeWalk:
         with qtbot.waitSignal(worker.finished, timeout=10000):
             worker.start()
 
-        assert "hosts_deep" in results
+        assert_that(results).contains("hosts_deep")
 
 
 class TestEarlyReturn:
@@ -501,7 +502,7 @@ class TestEarlyReturn:
         worker = SearchWorker("test")
         worker.run()
 
-        assert worker._count == 0
+        assert_that(worker._count).is_equal_to(0)
 
     @pytest.mark.usefixtures("qtbot")
     def test_walk_exits_at_loop_start_when_max_reached(self, monkeypatch: pytest.MonkeyPatch):
@@ -524,7 +525,7 @@ class TestEarlyReturn:
         worker.batch_found.connect(lambda batch: results.extend(p for p, _s, _d, _id in batch))
         worker.run()
 
-        assert len(results) == 1
+        assert_that(results).is_length(1)
 
 
 class TestWalkSearchStrategy:
@@ -542,7 +543,7 @@ class TestWalkSearchStrategy:
         results: list[str] = []
         strategy = WalkSearchStrategy([search_tree])
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
-        assert sorted(results) == ["hosts", "hosts.txt", "myhosts"]
+        assert_that(sorted(results)).is_equal_to(["hosts", "hosts.txt", "myhosts"])
 
     def test_respects_max_results(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         for i in range(10):
@@ -552,7 +553,7 @@ class TestWalkSearchStrategy:
         results: list[str] = []
         strategy = WalkSearchStrategy([tmp_path])
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 3
+        assert_that(results).is_length(3)
 
     def test_skips_excluded_dirs(self, tmp_path: Path):
         git_dir = tmp_path / ".git"
@@ -563,20 +564,20 @@ class TestWalkSearchStrategy:
         results: list[str] = []
         strategy = WalkSearchStrategy([tmp_path])
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(Path(path).name), lambda: False)
-        assert "hosts_root" in results
-        assert "hosts_config" not in results
+        assert_that(results).contains("hosts_root")
+        assert_that(results).does_not_contain("hosts_config")
 
     def test_handles_permission_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(os, "scandir", MagicMock(side_effect=PermissionError))
         strategy = WalkSearchStrategy([tmp_path])
         count = strategy.execute("anything", ["anything"], lambda _p, _s, _d, _id: None, lambda: False)
-        assert count == 0
+        assert_that(count).is_equal_to(0)
 
     def test_interruption(self, search_tree: Path):
         results: list[str] = []
         strategy = WalkSearchStrategy([search_tree])
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: True)
-        assert len(results) == 0
+        assert_that(results).is_empty()
 
     def test_returns_count(self, search_tree: Path):
         count = WalkSearchStrategy([search_tree]).execute(
@@ -585,7 +586,7 @@ class TestWalkSearchStrategy:
             lambda _p, _s, _d, _id: None,
             lambda: False,
         )
-        assert count == 3
+        assert_that(count).is_equal_to(3)
 
     def test_normalized_matching(self, tmp_path: Path):
         (tmp_path / "hello_world.txt").touch()
@@ -598,8 +599,8 @@ class TestWalkSearchStrategy:
             lambda path, _s, _d, _id: results.append(Path(path).name),
             lambda: False,
         )
-        assert "hello_world.txt" in results
-        assert "hello-world.py" in results
+        assert_that(results).contains("hello_world.txt")
+        assert_that(results).contains("hello-world.py")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
@@ -620,8 +621,8 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 1
-        assert results[0] == "C:\\hosts.txt"
+        assert_that(results).is_length(1)
+        assert_that(results[0]).is_equal_to("C:\\hosts.txt")
 
     def test_deferred_match(self, monkeypatch: pytest.MonkeyPatch):
         hosts_file = MftRecord(file_ref=10, parent_ref=20, name="hosts.txt", is_dir=False)
@@ -632,8 +633,8 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 1
-        assert results[0] == "C:\\Users\\hosts.txt"
+        assert_that(results).is_length(1)
+        assert_that(results[0]).is_equal_to("C:\\Users\\hosts.txt")
 
     def test_orphan_never_emitted(self, monkeypatch: pytest.MonkeyPatch):
         orphan = MftRecord(file_ref=10, parent_ref=999, name="hosts.txt", is_dir=False)
@@ -643,7 +644,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 0
+        assert_that(results).is_empty()
 
     def test_skip_dirs_filtering(self, monkeypatch: pytest.MonkeyPatch):
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
@@ -655,7 +656,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 0
+        assert_that(results).is_empty()
 
     def test_interruption_between_batches(self, monkeypatch: pytest.MonkeyPatch):
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
@@ -673,7 +674,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), interrupt_after_first)
-        assert len(results) == 1
+        assert_that(results).is_length(1)
 
     def test_max_results_stops(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 2)
@@ -685,7 +686,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 2
+        assert_that(results).is_length(2)
 
     def test_scores_correct(self, monkeypatch: pytest.MonkeyPatch):
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
@@ -702,8 +703,8 @@ class TestMftSearchStrategy:
             lambda path, score, _d, _id: scores.__setitem__(Path(path).name, score),
             lambda: False,
         )
-        assert scores["hosts"] == 0
-        assert scores["hosts.txt"] == 1
+        assert_that(scores["hosts"]).is_equal_to(0)
+        assert_that(scores["hosts.txt"]).is_equal_to(1)
 
     def test_depth_from_backslashes(self, monkeypatch: pytest.MonkeyPatch):
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
@@ -720,7 +721,7 @@ class TestMftSearchStrategy:
             lambda path, _s, depth, _id: depths.__setitem__(Path(path).name, depth),
             lambda: False,
         )
-        assert depths["hosts.txt"] == 2
+        assert_that(depths["hosts.txt"]).is_equal_to(2)
 
     def test_retry_pending_skip_dir(self, monkeypatch: pytest.MonkeyPatch):
         hosts_file = MftRecord(file_ref=10, parent_ref=20, name="hosts.txt", is_dir=False)
@@ -731,7 +732,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 0
+        assert_that(results).is_empty()
 
     def test_retry_pending_max_results(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 1)
@@ -744,7 +745,7 @@ class TestMftSearchStrategy:
         results: list[str] = []
         strategy = MftSearchStrategy("C:")
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
-        assert len(results) == 1
+        assert_that(results).is_length(1)
 
     def test_resolve_pending_emits_resolved(self):
         strategy = MftSearchStrategy("C:")
@@ -752,7 +753,7 @@ class TestMftSearchStrategy:
         strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
         results: list[str] = []
         strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=False)
-        assert results == ["C:\\hosts.txt"]
+        assert_that(results).is_equal_to(["C:\\hosts.txt"])
 
     def test_resolve_pending_max_results(self):
         strategy = MftSearchStrategy("C:")
@@ -761,7 +762,7 @@ class TestMftSearchStrategy:
         strategy._count = MAX_RESULTS
         results: list[str] = []
         strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=False)
-        assert len(results) == 0
+        assert_that(results).is_empty()
 
     def test_resolve_pending_cleanup_removes_resolved(self):
         strategy = MftSearchStrategy("C:")
@@ -769,8 +770,8 @@ class TestMftSearchStrategy:
         strategy._pending = {10: MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False)}
         results: list[str] = []
         strategy._resolve_pending("hosts", lambda path, _s, _d, _id: results.append(path), cleanup=True)
-        assert results == ["C:\\hosts.txt"]
-        assert len(strategy._pending) == 0
+        assert_that(results).is_equal_to(["C:\\hosts.txt"])
+        assert_that(strategy._pending).is_empty()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
@@ -782,7 +783,7 @@ class TestIsUnderSkipDir:
             20: (5, ".git", True),
         }
         strategy._skip_refs = {20}
-        assert strategy._is_under_skip_dir(10) is True
+        assert_that(strategy._is_under_skip_dir(10)).is_true()
 
     def test_not_under_skip_dir(self):
         strategy = MftSearchStrategy("C:")
@@ -790,7 +791,7 @@ class TestIsUnderSkipDir:
             10: (5, "file.txt", False),
         }
         strategy._skip_refs = set()
-        assert strategy._is_under_skip_dir(10) is False
+        assert_that(strategy._is_under_skip_dir(10)).is_false()
 
     def test_cycle_detection(self):
         strategy = MftSearchStrategy("C:")
@@ -799,7 +800,7 @@ class TestIsUnderSkipDir:
             11: (10, "b", False),
         }
         strategy._skip_refs = set()
-        assert strategy._is_under_skip_dir(10) is False
+        assert_that(strategy._is_under_skip_dir(10)).is_false()
 
     def test_root_ref_stops(self):
         strategy = MftSearchStrategy("C:")
@@ -807,7 +808,7 @@ class TestIsUnderSkipDir:
             10: (5, "file.txt", False),
         }
         strategy._skip_refs = set()
-        assert strategy._is_under_skip_dir(10) is False
+        assert_that(strategy._is_under_skip_dir(10)).is_false()
 
 
 class TestSearchWorkerStrategy:
@@ -822,7 +823,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
@@ -842,7 +843,7 @@ class TestSearchWorkerStrategy:
 
         mock_is_ntfs.assert_called_once_with("C:")
         mock_strategy.assert_called_once_with("C:")
-        assert worker._count == 5
+        assert_that(worker._count).is_equal_to(5)
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
@@ -863,7 +864,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @pytest.mark.usefixtures("qtbot")
@@ -880,7 +881,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.usefixtures("qtbot")
     def test_spotlight_on_darwin(self, monkeypatch: pytest.MonkeyPatch):
@@ -898,7 +899,7 @@ class TestSearchWorkerStrategy:
         worker.run()
 
         mock_strategy.assert_called_once()
-        assert worker._count == 3
+        assert_that(worker._count).is_equal_to(3)
 
     @pytest.mark.usefixtures("qtbot")
     def test_spotlight_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -918,7 +919,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.usefixtures("qtbot")
     def test_spotlight_not_found_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -932,7 +933,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.usefixtures("qtbot")
     def test_locate_on_linux(self, monkeypatch: pytest.MonkeyPatch):
@@ -950,7 +951,7 @@ class TestSearchWorkerStrategy:
         worker.run()
 
         mock_strategy.assert_called_once_with("/usr/bin/plocate")
-        assert worker._count == 4
+        assert_that(worker._count).is_equal_to(4)
 
     @pytest.mark.usefixtures("qtbot")
     def test_locate_fallback_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -970,7 +971,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
     @pytest.mark.usefixtures("qtbot")
     def test_locate_not_found_uses_walk(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -984,7 +985,7 @@ class TestSearchWorkerStrategy:
         worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
         worker.run()
 
-        assert "hosts" in results
+        assert_that(results).contains("hosts")
 
 
 class TestBatchBuffer:
@@ -998,13 +999,13 @@ class TestBatchBuffer:
         worker.batch_found.connect(lambda batch: batches.append(batch))
         worker.run()
 
-        assert len(batches) == 1
-        assert len(batches[0]) == 1
+        assert_that(batches).is_length(1)
+        assert_that(batches[0]).is_length(1)
         path, score, depth, is_dir = batches[0][0]
-        assert Path(path).name == "hosts"
-        assert isinstance(score, int)
-        assert isinstance(depth, int)
-        assert isinstance(is_dir, bool)
+        assert_that(Path(path).name).is_equal_to("hosts")
+        assert_that(score).is_instance_of(int)
+        assert_that(depth).is_instance_of(int)
+        assert_that(is_dir).is_instance_of(bool)
 
     @pytest.mark.usefixtures("qtbot")
     def test_buffer_flushes_at_batch_size(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -1018,9 +1019,9 @@ class TestBatchBuffer:
         worker.batch_found.connect(lambda batch: batches.append(batch))
         worker.run()
 
-        assert len(batches) >= 2
+        assert_that(len(batches)).is_greater_than_or_equal_to(2)
         total_items = sum(len(batch) for batch in batches)
-        assert total_items == 5
+        assert_that(total_items).is_equal_to(5)
 
     @pytest.mark.usefixtures("qtbot")
     def test_remaining_buffer_flushed_at_end(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -1035,5 +1036,5 @@ class TestBatchBuffer:
         worker.batch_found.connect(lambda batch: batches.append(batch))
         worker.run()
 
-        assert len(batches) == 1
-        assert len(batches[0]) == 3
+        assert_that(batches).is_length(1)
+        assert_that(batches[0]).is_length(3)

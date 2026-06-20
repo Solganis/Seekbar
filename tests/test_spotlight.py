@@ -3,13 +3,15 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+from assertpy2 import assert_that
 
 
 class TestImportGuard:
     def test_non_darwin_raises(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(sys, "platform", "win32")
-        with pytest.raises(ImportError, match="macOS"):
-            importlib.reload(importlib.import_module("seekbar._spotlight"))
+        assert_that(lambda: importlib.reload(importlib.import_module("seekbar._spotlight"))).raises(
+            ImportError
+        ).when_called_with().satisfies(lambda message: "macOS" in message)
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
@@ -24,6 +26,6 @@ class TestSpotlightSearchStrategy:
             strategy = SpotlightSearchStrategy()
             count = strategy.execute("hosts", ["hosts"], mock_on_found, mock_interrupted)
 
-        assert count == 5
+        assert_that(count).is_equal_to(5)
         args = mock_search.call_args
-        assert args[0][0] == ["mdfind", "-name", "hosts"]
+        assert_that(args[0][0]).is_equal_to(["mdfind", "-name", "hosts"])

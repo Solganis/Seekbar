@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import pytest
+from assertpy2 import assert_that
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,8 +43,8 @@ class TestSubprocessSearch:
                 lambda: False,
             )
 
-        assert count == 1
-        assert "hosts.txt" in results[0][0]
+        assert_that(count).is_equal_to(1)
+        assert_that(results[0][0]).contains("hosts.txt")
 
     def test_scores_results(self):
         lines = [f"/home/hosts{os.linesep}", f"/home/hosts.txt{os.linesep}"]
@@ -55,7 +55,7 @@ class TestSubprocessSearch:
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
         scores = [score for _, score, _, _ in results]
-        assert scores[0] < scores[1]
+        assert_that(scores[0]).is_less_than(scores[1])
 
     def test_detects_directories(self):
         lines = [f"/home/hosts_dir{os.linesep}"]
@@ -65,7 +65,7 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=True):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
-        assert results[0][3] is True
+        assert_that(results[0][3]).is_true()
 
     def test_computes_depth(self):
         path = str(Path("/", "home", "user", "docs", "hosts.txt"))
@@ -76,7 +76,7 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
-        assert results[0][2] == 4
+        assert_that(results[0][2]).is_equal_to(4)
 
     def test_skips_dirs_in_skip_list(self):
         lines = [
@@ -89,8 +89,8 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
-        assert len(results) == 1
-        assert ".git" not in results[0][0]
+        assert_that(results).is_length(1)
+        assert_that(results[0][0]).does_not_contain(".git")
 
     def test_interruption_stops_search(self):
         lines = [f"/home/hosts_{i}.txt{os.linesep}" for i in range(100)]
@@ -113,8 +113,8 @@ class TestSubprocessSearch:
                 interrupt_after_first,
             )
 
-        assert count == 1
-        assert process._terminated
+        assert_that(count).is_equal_to(1)
+        assert_that(process._terminated).is_true()
 
     def test_max_results_stops_search(self):
         lines = [f"/home/hosts_{i}.txt{os.linesep}" for i in range(MAX_RESULTS + 10)]
@@ -130,7 +130,7 @@ class TestSubprocessSearch:
                 lambda: False,
             )
 
-        assert count == MAX_RESULTS
+        assert_that(count).is_equal_to(MAX_RESULTS)
 
     def test_empty_output(self):
         process = _FakeProcess([])
@@ -139,8 +139,8 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process):
             count = subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
-        assert count == 0
-        assert results == []
+        assert_that(count).is_equal_to(0)
+        assert_that(results).is_empty()
 
     def test_skips_empty_lines(self):
         lines = [os.linesep, f"/home/hosts.txt{os.linesep}", os.linesep]
@@ -156,7 +156,7 @@ class TestSubprocessSearch:
                 lambda: False,
             )
 
-        assert count == 1
+        assert_that(count).is_equal_to(1)
 
     def test_non_matching_files_filtered(self):
         lines = [f"/home/readme.md{os.linesep}", f"/home/changelog.txt{os.linesep}"]
@@ -166,8 +166,8 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process):
             count = subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
 
-        assert count == 0
-        assert results == []
+        assert_that(count).is_equal_to(0)
+        assert_that(results).is_empty()
 
     def test_process_terminated_on_success(self):
         lines = [f"/home/hosts.txt{os.linesep}"]
@@ -176,7 +176,7 @@ class TestSubprocessSearch:
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *_args: None, lambda: False)
 
-        assert process._terminated
+        assert_that(process._terminated).is_true()
 
     def test_process_terminated_on_exception(self):
         process = MagicMock()
@@ -189,9 +189,10 @@ class TestSubprocessSearch:
         with (
             patch(_POPEN, return_value=process),
             patch.object(Path, "is_dir", side_effect=raise_error),
-            pytest.raises(RuntimeError),
         ):
-            subprocess_search(["cmd"], "hosts", ["hosts"], lambda *_args: None, lambda: False)
+            assert_that(subprocess_search).raises(RuntimeError).when_called_with(
+                ["cmd"], "hosts", ["hosts"], lambda *_args: None, lambda: False
+            )
 
         process.terminate.assert_called_once()
         process.wait.assert_called_once()
@@ -210,4 +211,4 @@ class TestSubprocessSearch:
                 lambda: False,
             )
 
-        assert count == 1
+        assert_that(count).is_equal_to(1)
