@@ -20,9 +20,7 @@ class TestThemeMode:
         assert_that(ThemeMode("light")).is_equal_to(ThemeMode.LIGHT)
 
     def test_invalid_value(self):
-        assert_that(ThemeMode).raises(ValueError).when_called_with("invalid").satisfies(
-            lambda message: "invalid" in message
-        )
+        assert_that(ThemeMode).raises(ValueError).when_called_with("invalid").matches("invalid")
 
 
 class TestTheme:

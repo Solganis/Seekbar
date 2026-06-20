@@ -11,7 +11,7 @@ class TestImportGuard:
         monkeypatch.setattr(sys, "platform", "win32")
         assert_that(lambda: importlib.reload(importlib.import_module("seekbar._spotlight"))).raises(
             ImportError
-        ).when_called_with().satisfies(lambda message: "macOS" in message)
+        ).when_called_with().matches("macOS")
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")

@@ -2,6 +2,8 @@ import sys
 
 import pytest
 from assertpy2 import assert_that
+from hypothesis import given
+from hypothesis import strategies as st
 
 if sys.platform != "win32":
     pytest.skip("Windows-only tests", allow_module_level=True)
@@ -86,9 +88,7 @@ class TestEnumerateMft:
         monkeypatch.setattr("seekbar._mft.kernel32", mock_kernel)
         monkeypatch.setattr(ctypes, "get_last_error", lambda: 5)
 
-        assert_that(enumerate_mft).raises(OSError).when_called_with("C:").satisfies(
-            lambda message: "Cannot open volume" in message
-        )
+        assert_that(enumerate_mft).raises(OSError).when_called_with("C:").matches("Cannot open volume")
 
     def test_empty_volume(self, monkeypatch):
         mock_kernel = MagicMock()
@@ -309,9 +309,7 @@ class TestStreamMft:
         monkeypatch.setattr("seekbar._mft.kernel32", mock_kernel)
         monkeypatch.setattr(ctypes, "get_last_error", lambda: 5)
 
-        assert_that(lambda: list(stream_mft("C:"))).raises(OSError).when_called_with().satisfies(
-            lambda message: "Cannot open volume" in message
-        )
+        assert_that(lambda: list(stream_mft("C:"))).raises(OSError).when_called_with().matches("Cannot open volume")
 
 
 class TestReadMftRefactored:
@@ -347,6 +345,28 @@ class TestReadMftRefactored:
 class TestImportGuard:
     def test_non_windows_raises(self, monkeypatch):
         monkeypatch.setattr(sys, "platform", "linux")
-        assert_that(lambda: importlib.reload(mft_module)).raises(ImportError).when_called_with().satisfies(
-            lambda message: "only available on Windows" in message
+        assert_that(lambda: importlib.reload(mft_module)).raises(ImportError).when_called_with().matches(
+            "only available on Windows"
         )
+
+
+_RECORDS = st.dictionaries(
+    keys=st.integers(min_value=0, max_value=20),
+    values=st.tuples(st.integers(min_value=0, max_value=20), st.text(max_size=6), st.booleans()),
+    max_size=12,
+)
+
+
+class TestResolvePathProperties:
+    @given(_RECORDS, st.integers(min_value=0, max_value=20), st.integers(min_value=0, max_value=20))
+    def test_never_crashes_and_returns_str(self, records, ref, root_ref):
+        assert_that(resolve_path(ref, records, root_ref, "C:", {})).is_instance_of(str)
+
+    @given(_RECORDS, st.integers(min_value=0, max_value=20))
+    def test_cache_does_not_change_result(self, records, root_ref):
+        # Resolving with a warming shared cache must equal resolving each ref with a fresh cache.
+        shared: dict[int, str] = {}
+        for ref in records:
+            with_shared = resolve_path(ref, records, root_ref, "C:", shared)
+            with_fresh = resolve_path(ref, records, root_ref, "C:", {})
+            assert_that(with_shared).is_equal_to(with_fresh)

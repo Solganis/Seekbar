@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from assertpy2 import assert_that
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
@@ -1240,3 +1242,33 @@ class TestRecencyStore:
         store.record("C:/new")
         assert_that(store.rank("C:/new")).is_equal_to(0)
         assert_that(store.rank("C:/p499")).is_equal_to(_RecencyStore._LIMIT)
+
+
+class TestRecencyStoreProperties:
+    @settings(deadline=None, max_examples=50)
+    @given(st.lists(st.text(max_size=8), min_size=1, max_size=15))
+    def test_last_recorded_is_rank_zero(self, paths: list[str]):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
+        store = _RecencyStore()
+        for path in paths:
+            store.record(path)
+        assert_that(store.rank(paths[-1])).is_equal_to(0)
+
+    @settings(deadline=None, max_examples=50)
+    @given(st.lists(st.text(max_size=8), max_size=15))
+    def test_ranks_stay_bounded(self, paths: list[str]):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
+        store = _RecencyStore()
+        for path in paths:
+            store.record(path)
+        for path in paths:
+            assert_that(store.rank(path)).is_between(0, _RecencyStore._LIMIT)
+
+    @settings(deadline=None, max_examples=50)
+    @given(st.lists(st.text(max_size=8), max_size=15))
+    def test_no_duplicate_paths(self, paths: list[str]):
+        QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
+        store = _RecencyStore()
+        for path in paths:
+            store.record(path)
+        assert_that(store._paths).does_not_contain_duplicates()
