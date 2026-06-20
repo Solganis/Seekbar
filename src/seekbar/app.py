@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast, override
 
 from PySide6.QtCore import (
+    QAbstractListModel,
     QAbstractNativeEventFilter,
     QByteArray,
     QEasingCurve,
     QEvent,
+    QModelIndex,
     QObject,
     QPoint,
     QRect,
@@ -39,8 +41,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
+    QListView,
     QMenu,
     QPushButton,
     QStyle,
@@ -79,7 +80,7 @@ else:  # pragma: no cover - non-Windows fallback
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from PySide6.QtCore import QModelIndex, QPersistentModelIndex
+    from PySide6.QtCore import QPersistentModelIndex
     from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
     from PySide6.QtWidgets import QStyleOptionViewItem
 
@@ -250,6 +251,49 @@ class _ResultDelegate(QStyledItemDelegate):
         return QSize(0, self._item_height)
 
 
+_NO_PARENT = QModelIndex()
+
+
+class _ResultModel(QAbstractListModel):
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._keys: list[tuple[int, int, int]] = []
+        self._rows: list[tuple[str, bool]] = []
+
+    @override
+    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _NO_PARENT) -> int:
+        return 0 if parent.isValid() else len(self._rows)
+
+    @override
+    def data(self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
+        if not index.isValid():
+            return None
+        if role == Qt.ItemDataRole.UserRole:
+            return self._rows[index.row()][0]
+        if role == _IS_DIR_ROLE:
+            return self._rows[index.row()][1]
+        return None
+
+    def add_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
+        for path, score, depth, is_dir in results:
+            # Basename length without allocating a Path, used only as a sort tiebreaker.
+            key = (score, depth, len(path) - max(path.rfind("\\"), path.rfind("/")) - 1)
+            pos = bisect.bisect_right(self._keys, key)
+            self.beginInsertRows(_NO_PARENT, pos, pos)
+            self._keys.insert(pos, key)
+            self._rows.insert(pos, (path, is_dir))
+            self.endInsertRows()
+
+    def clear(self) -> None:
+        self.beginResetModel()
+        self._keys.clear()
+        self._rows.clear()
+        self.endResetModel()
+
+    def path_at(self, row: int) -> str:
+        return self._rows[row][0]
+
+
 class MainWindow(QWidget):
     _MAX_VISIBLE = 9
     _MARGIN = 2
@@ -271,7 +315,6 @@ class MainWindow(QWidget):
 
         self._worker: SearchWorker | None = None
         self._drag_pos: QPoint | None = None
-        self._sort_keys: list[tuple[int, int, int]] = []
 
         self._init_timers()
 
@@ -468,15 +511,18 @@ class MainWindow(QWidget):
         separator.hide()
         return separator
 
-    def _build_result_list(self) -> QListWidget:
-        result_list = QListWidget()
+    def _build_result_list(self) -> QListView:
+        self._result_model = _ResultModel(self)
+        result_list = QListView()
         result_list.setObjectName("resultList")
+        result_list.setModel(self._result_model)
+        result_list.setUniformItemSizes(True)
         self._delegate = _ResultDelegate(self._theme, result_list)
         result_list.setItemDelegate(self._delegate)
         result_list.setMouseTracking(True)
         result_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         result_list.customContextMenuRequested.connect(self._show_context_menu)
-        result_list.itemDoubleClicked.connect(self._open_file)
+        result_list.doubleClicked.connect(self._open_index)
         result_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         result_list.hide()
         return result_list
@@ -709,7 +755,7 @@ class MainWindow(QWidget):
 
     def _sync_height(self, *, animate: bool = False) -> None:
         self._height_anim.stop()
-        count = self._result_list.count()
+        count = self._result_model.rowCount()
         has_results = count > 0
         help_visible = not self._help_popup.isHidden()
         donate_visible = not self._donate_popup.isHidden()
@@ -832,19 +878,24 @@ class MainWindow(QWidget):
                 self._move_selection(-self._MAX_VISIBLE)
 
     def _move_selection(self, delta: int) -> None:
-        count = self._result_list.count()
+        count = self._result_model.rowCount()
         if count == 0:
             return
-        current = self._result_list.currentRow()
-        new_row = max(0, min(count - 1, current + delta))
-        self._result_list.setCurrentRow(new_row)
+        new_row = max(0, min(count - 1, self._current_row() + delta))
+        self._select_row(new_row)
+
+    def _current_row(self) -> int:
+        return self._result_list.currentIndex().row()
+
+    def _select_row(self, row: int) -> None:
+        self._result_list.setCurrentIndex(self._result_model.index(row))
 
     def _activate_selected(self) -> None:
-        item = self._result_list.currentItem()
-        if item:
-            self._open_file(item)
-        else:
+        row = self._current_row()
+        if row < 0:
             self._start_search_immediate()
+        else:
+            self._open_file_by_path(self._result_model.path_at(row))
 
     # -- search lifecycle --
 
@@ -855,8 +906,7 @@ class MainWindow(QWidget):
             self._debounce_timer.stop()
             self._stop_search()
             self._stop_searching_animation()
-            self._result_list.clear()
-            self._sort_keys.clear()
+            self._result_model.clear()
             self._status_label.clear()
             self._sync_height()
             return
@@ -873,8 +923,7 @@ class MainWindow(QWidget):
         if not query:
             return
         self._stop_search()
-        self._result_list.clear()
-        self._sort_keys.clear()
+        self._result_model.clear()
         if not self._searching_timer.isActive():
             self._start_searching_animation()
         self._sync_height()
@@ -906,20 +955,8 @@ class MainWindow(QWidget):
         if self._worker is None or not results:
             return
         self._stop_searching_animation()
-        self._result_list.setUpdatesEnabled(False)
-        for path, score, depth, is_dir in results:
-            # Basename length without allocating a Path, used only as a sort tiebreaker.
-            key = (score, depth, len(path) - max(path.rfind("\\"), path.rfind("/")) - 1)
-            pos = bisect.bisect_right(self._sort_keys, key)
-            self._sort_keys.insert(pos, key)
-            item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, path)
-            item.setData(_IS_DIR_ROLE, is_dir)
-            item.setSizeHint(QSize(0, self._delegate.item_height))
-            self._result_list.insertItem(pos, item)
-        self._result_list.setUpdatesEnabled(True)
-        count = self._result_list.count()
-        self._status_label.setText(self._format_count(count))
+        self._result_model.add_batch(results)
+        self._status_label.setText(self._format_count(self._result_model.rowCount()))
         if self._help_popup.isHidden() and self._donate_popup.isHidden():
             self._sync_height()
 
@@ -942,7 +979,7 @@ class MainWindow(QWidget):
         if self._worker is None:
             return
         self._stop_searching_animation()
-        count = self._result_list.count()
+        count = self._result_model.rowCount()
         self._status_label.setText("no results" if count == 0 else self._format_count(count))
         if self._help_popup.isHidden() and self._donate_popup.isHidden():
             self._sync_height()
@@ -969,10 +1006,10 @@ class MainWindow(QWidget):
     # -- actions --
 
     def _show_context_menu(self, pos: QPoint) -> None:
-        item = self._result_list.itemAt(pos)
-        if not item:
+        index = self._result_list.indexAt(pos)
+        if not index.isValid():
             return
-        path = item.data(Qt.ItemDataRole.UserRole)
+        path = self._result_model.path_at(index.row())
         menu = QMenu(self)
         file_icon = QIcon(self._delegate.file_icon)
         folder_icon = QIcon(self._delegate.folder_icon)
@@ -984,9 +1021,8 @@ class MainWindow(QWidget):
         menu.addAction(act_folder)
         menu.popup(self._result_list.mapToGlobal(pos))
 
-    def _open_file(self, item: QListWidgetItem) -> None:
-        path = item.data(Qt.ItemDataRole.UserRole)
-        self._open_file_by_path(path)
+    def _open_index(self, index: QModelIndex) -> None:
+        self._open_file_by_path(self._result_model.path_at(index.row()))
 
     def _open_file_by_path(self, path: str) -> None:
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
@@ -1013,7 +1049,7 @@ class MainWindow(QWidget):
         self._temp_status_timer.start()
 
     def _restore_status(self) -> None:
-        count = self._result_list.count()
+        count = self._result_model.rowCount()
         if count > 0:
             self._status_label.setText(self._format_count(count))
         else:

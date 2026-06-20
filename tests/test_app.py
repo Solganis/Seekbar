@@ -14,7 +14,15 @@ from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import MainWindow, _FONT_FAMILY, _IS_DIR_ROLE, SETTINGS_APP, SETTINGS_ORG, _system_font_family
+from seekbar.app import (
+    MainWindow,
+    _FONT_FAMILY,
+    _IS_DIR_ROLE,
+    _ResultModel,
+    SETTINGS_APP,
+    SETTINGS_ORG,
+    _system_font_family,
+)
 from seekbar.search import MAX_RESULTS
 from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
 
@@ -85,24 +93,21 @@ class TestSortedInsertion:
         window._add_result("C:/dir/hosts", 0)
         window._add_result("C:/dir/hosts.txt", 1)
 
-        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        paths = [window._result_model.path_at(i) for i in range(window._result_model.rowCount())]
         assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"])
 
     def test_secondary_sort_by_name_length(self, window: MainWindow):
         window._add_result("C:/dir/ab_hosts", 4)
         window._add_result("C:/dir/a_hosts", 4)
 
-        names = [
-            Path(window._result_list.item(i).data(Qt.ItemDataRole.UserRole)).name
-            for i in range(window._result_list.count())
-        ]
+        names = [Path(window._result_model.path_at(i)).name for i in range(window._result_model.rowCount())]
         assert_that(names).is_equal_to(["a_hosts", "ab_hosts"])
 
     def test_depth_sort_tiebreaker(self, window: MainWindow):
         window._add_result("C:/a/b/c/hosts", 0, depth=3)
         window._add_result("C:/hosts", 0, depth=1)
 
-        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        paths = [window._result_model.path_at(i) for i in range(window._result_model.rowCount())]
         assert_that(paths).is_equal_to(["C:/hosts", "C:/a/b/c/hosts"])
 
     def test_results_become_visible(self, window: MainWindow):
@@ -131,7 +136,7 @@ class TestSearchLifecycle:
         window._search_input.setText("query")
         window._add_result("C:/test/file.txt", 4)
         window._search_input.setText("")
-        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._result_model.rowCount()).is_equal_to(0)
         assert_that(window._status_label.text()).is_empty()
         assert_that(window._result_list.isHidden()).is_true()
 
@@ -153,7 +158,7 @@ class TestSearchLifecycle:
     def test_add_result_ignored_without_worker(self, window: MainWindow):
         window._worker = None
         window._add_result("C:/test/stale.txt", 4)
-        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._result_model.rowCount()).is_equal_to(0)
 
     def test_done_ignored_without_worker(self, window: MainWindow):
         window._worker = None
@@ -292,35 +297,35 @@ class TestKeyboardNavigation:
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert_that(window._result_list.currentRow()).is_equal_to(0)
+        assert_that(window._current_row()).is_equal_to(0)
 
     def test_key_down_advances(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
-        window._result_list.setCurrentRow(0)
+        window._select_row(0)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert_that(window._result_list.currentRow()).is_equal_to(1)
+        assert_that(window._current_row()).is_equal_to(1)
 
     def test_key_down_stays_at_bottom(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
-        window._result_list.setCurrentRow(1)
+        window._select_row(1)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert_that(window._result_list.currentRow()).is_equal_to(1)
+        assert_that(window._current_row()).is_equal_to(1)
 
     def test_key_up_stays_at_top(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
-        window._result_list.setCurrentRow(0)
+        window._select_row(0)
         qtbot.keyClick(window, Qt.Key.Key_Up)
-        assert_that(window._result_list.currentRow()).is_equal_to(0)
+        assert_that(window._current_row()).is_equal_to(0)
 
     def test_move_selection_empty_list(self, window: MainWindow):
         window._move_selection(1)
-        assert_that(window._result_list.currentRow()).is_equal_to(-1)
+        assert_that(window._current_row()).is_equal_to(-1)
 
     def test_enter_opens_selected(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._add_result("C:/test/hosts", 0)
-        window._result_list.setCurrentRow(0)
+        window._select_row(0)
         mock_desktop = MagicMock()
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._activate_selected()
@@ -328,7 +333,7 @@ class TestKeyboardNavigation:
 
     def test_return_key_via_key_press_event(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._add_result("C:/test/hosts", 0)
-        window._result_list.setCurrentRow(0)
+        window._select_row(0)
         window._result_list.setFocus()
         mock_desktop = MagicMock()
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
@@ -368,10 +373,9 @@ class TestContextMenu:
 class TestFileOpening:
     def test_open_file(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._add_result("C:/test/hosts", 0)
-        item = window._result_list.item(0)
         mock_desktop = MagicMock()
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
-        window._open_file(item)
+        window._open_index(window._result_model.index(0))
         mock_desktop.openUrl.assert_called_once()
 
     def test_open_file_by_path(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
@@ -405,13 +409,11 @@ class TestFileOpening:
 class TestIsDirRole:
     def test_file_default(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
-        item = window._result_list.item(0)
-        assert_that(item.data(_IS_DIR_ROLE)).is_false()
+        assert_that(window._result_model.data(window._result_model.index(0), _IS_DIR_ROLE)).is_false()
 
     def test_directory_stored(self, window: MainWindow):
         window._add_result("C:/test/folder", 4, is_dir=True)
-        item = window._result_list.item(0)
-        assert_that(item.data(_IS_DIR_ROLE)).is_true()
+        assert_that(window._result_model.data(window._result_model.index(0), _IS_DIR_ROLE)).is_true()
 
 
 class TestResultDelegate:
@@ -602,7 +604,7 @@ class TestBatchInsertion:
                 ("C:/dir/xhostsy", 4, 1, False),
             ]
         )
-        assert_that(window._result_list.count()).is_equal_to(3)
+        assert_that(window._result_model.rowCount()).is_equal_to(3)
 
     def test_batch_sorted_correctly(self, window: MainWindow):
         window._add_results_batch(
@@ -612,7 +614,7 @@ class TestBatchInsertion:
                 ("C:/dir/hosts.txt", 1, 1, False),
             ]
         )
-        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        paths = [window._result_model.path_at(i) for i in range(window._result_model.rowCount())]
         assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"])
 
     def test_batch_updates_status_once(self, window: MainWindow):
@@ -634,11 +636,11 @@ class TestBatchInsertion:
     def test_batch_ignored_without_worker(self, window: MainWindow):
         window._worker = None
         window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
-        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._result_model.rowCount()).is_equal_to(0)
 
     def test_batch_empty_list_noop(self, window: MainWindow):
         window._add_results_batch([])
-        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._result_model.rowCount()).is_equal_to(0)
         assert_that(window._status_label.text()).is_empty()
 
     def test_batch_preserves_is_dir(self, window: MainWindow):
@@ -648,8 +650,8 @@ class TestBatchInsertion:
                 ("C:/dir/file.txt", 4, 1, False),
             ]
         )
-        assert_that(window._result_list.item(0).data(_IS_DIR_ROLE)).is_true()
-        assert_that(window._result_list.item(1).data(_IS_DIR_ROLE)).is_false()
+        assert_that(window._result_model.data(window._result_model.index(0), _IS_DIR_ROLE)).is_true()
+        assert_that(window._result_model.data(window._result_model.index(1), _IS_DIR_ROLE)).is_false()
 
     def test_multiple_batches_merge_correctly(self, window: MainWindow):
         window._add_results_batch(
@@ -664,7 +666,7 @@ class TestBatchInsertion:
                 ("C:/dir/myhosts", 3, 1, False),
             ]
         )
-        paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
+        paths = [window._result_model.path_at(i) for i in range(window._result_model.rowCount())]
         assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/myhosts", "C:/dir/xhostsy"])
 
 
@@ -672,30 +674,30 @@ class TestExtendedNavigation:
     def test_page_down(self, window: MainWindow, qtbot: QtBot):
         for i in range(20):
             window._add_result(f"C:/test/file_{i:02d}.txt", 4)
-        window._result_list.setCurrentRow(0)
+        window._select_row(0)
         qtbot.keyClick(window, Qt.Key.Key_PageDown)
-        assert_that(window._result_list.currentRow()).is_equal_to(window._MAX_VISIBLE)
+        assert_that(window._current_row()).is_equal_to(window._MAX_VISIBLE)
 
     def test_page_up(self, window: MainWindow, qtbot: QtBot):
         for i in range(20):
             window._add_result(f"C:/test/file_{i:02d}.txt", 4)
-        window._result_list.setCurrentRow(15)
+        window._select_row(15)
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
-        assert_that(window._result_list.currentRow()).is_equal_to(15 - window._MAX_VISIBLE)
+        assert_that(window._current_row()).is_equal_to(15 - window._MAX_VISIBLE)
 
     def test_page_down_clamps_to_last(self, window: MainWindow, qtbot: QtBot):
         for i in range(5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
-        window._result_list.setCurrentRow(3)
+        window._select_row(3)
         qtbot.keyClick(window, Qt.Key.Key_PageDown)
-        assert_that(window._result_list.currentRow()).is_equal_to(4)
+        assert_that(window._current_row()).is_equal_to(4)
 
     def test_page_up_clamps_to_first(self, window: MainWindow, qtbot: QtBot):
         for i in range(5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
-        window._result_list.setCurrentRow(1)
+        window._select_row(1)
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
-        assert_that(window._result_list.currentRow()).is_equal_to(0)
+        assert_that(window._current_row()).is_equal_to(0)
 
 
 class TestSearchingAnimation:
@@ -1150,3 +1152,23 @@ class TestGlobalHotkey:
         with patch("seekbar.app._hotkey", None):
             window._init_hotkey()
         assert_that(window._hotkey_registered).is_false()
+
+
+class TestResultModel:
+    @pytest.fixture
+    def model(self, qtbot: QtBot) -> _ResultModel:  # noqa: ARG002 - qtbot ensures a QApplication exists
+        instance = _ResultModel()
+        instance.add_batch([("C:/dir/file.txt", 0, 0, False)])
+        return instance
+
+    def test_data_invalid_index_returns_none(self, model: _ResultModel):
+        assert_that(model.data(QModelIndex(), Qt.ItemDataRole.UserRole)).is_none()
+
+    def test_data_user_role_returns_path(self, model: _ResultModel):
+        assert_that(model.data(model.index(0), Qt.ItemDataRole.UserRole)).is_equal_to("C:/dir/file.txt")
+
+    def test_data_unknown_role_returns_none(self, model: _ResultModel):
+        assert_that(model.data(model.index(0), Qt.ItemDataRole.DisplayRole)).is_none()
+
+    def test_row_count_with_valid_parent_is_zero(self, model: _ResultModel):
+        assert_that(model.rowCount(model.index(0))).is_equal_to(0)
