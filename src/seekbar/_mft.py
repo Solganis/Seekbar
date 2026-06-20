@@ -184,27 +184,29 @@ def resolve_path(
     if ref in cache:
         return cache[ref]
 
-    parts: list[str] = []
+    chain: list[int] = []
+    names: list[str] = []
     current = ref
     seen: set[int] = set()
 
     while current != root_ref and current in records:
+        if current in cache:
+            break
         if current in seen:
             return ""
-        if current in cache:
-            parts.reverse()
-            result = cache[current] + "\\" + "\\".join(parts) if parts else cache[current]
-            cache[ref] = result
-            return result
         seen.add(current)
         parent, name, _ = records[current]
-        parts.append(name)
+        chain.append(current)
+        names.append(name)
         current = parent
 
-    if current != root_ref and current not in records:
+    if current != root_ref and current not in cache and current not in records:
         return ""
 
-    parts.reverse()
-    result = drive_letter.rstrip("\\") + "\\" + "\\".join(parts)
-    cache[ref] = result
-    return result
+    # Cache every ref walked, not just the requested one, so sibling lookups
+    # reuse already-resolved ancestor paths instead of re-walking the chain.
+    path = cache[current] if current in cache else drive_letter.rstrip("\\")
+    for index in range(len(names) - 1, -1, -1):
+        path = path + "\\" + names[index]
+        cache[chain[index]] = path
+    return path

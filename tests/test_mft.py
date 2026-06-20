@@ -181,6 +181,18 @@ class TestResolvePath:
         result = resolve_path(10, records, 5, "C:\\", cache)
         assert_that(result).is_equal_to("C:\\file.txt")
 
+    def test_caches_intermediate_refs(self):
+        records = {
+            10: (5, "Users", True),
+            11: (10, "admin", True),
+            12: (11, "hosts.txt", False),
+        }
+        cache: dict[int, str] = {}
+        resolve_path(12, records, 5, "C:", cache)
+        assert_that(cache[10]).is_equal_to("C:\\Users")
+        assert_that(cache[11]).is_equal_to("C:\\Users\\admin")
+        assert_that(cache[12]).is_equal_to("C:\\Users\\admin\\hosts.txt")
+
 
 class TestMftRecord:
     def test_fields(self):
