@@ -292,6 +292,11 @@ class _RecencyStore:
         QSettings(SETTINGS_ORG, SETTINGS_APP).setValue(self._KEY, json.dumps(self._paths))
 
 
+def _basename_length(path: str) -> int:
+    # Length of the final path component without allocating a Path; handles either separator.
+    return len(path) - max(path.rfind("\\"), path.rfind("/")) - 1
+
+
 class _ResultModel(QAbstractListModel):
     def __init__(self, recency: _RecencyStore, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -315,9 +320,8 @@ class _ResultModel(QAbstractListModel):
 
     def add_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
         for path, score, depth, is_dir in results:
-            # Basename length without allocating a Path; recency breaks ties within a score tier.
-            name_length = len(path) - max(path.rfind("\\"), path.rfind("/")) - 1
-            key = (score, self._recency.rank(path), depth, name_length)
+            # Recency breaks ties within a score tier; basename length is the final tiebreaker.
+            key = (score, self._recency.rank(path), depth, _basename_length(path))
             pos = bisect.bisect_right(self._keys, key)
             self.beginInsertRows(_NO_PARENT, pos, pos)
             self._keys.insert(pos, key)

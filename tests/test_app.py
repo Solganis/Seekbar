@@ -2,7 +2,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import platform
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +19,7 @@ import seekbar.app
 # noinspection PyProtectedMember
 from seekbar.app import (
     MainWindow,
+    _basename_length,
     _FONT_FAMILY,
     _IS_DIR_ROLE,
     _RecencyStore,
@@ -1272,3 +1273,44 @@ class TestRecencyStoreProperties:
         for path in paths:
             store.record(path)
         assert_that(store._paths).does_not_contain_duplicates()
+
+
+_PATH_SEGMENT = st.text(alphabet="abcABC123._-", min_size=1, max_size=8).filter(
+    lambda segment: segment not in (".", "..")
+)
+
+
+@st.composite
+def _result_path(draw: st.DrawFn) -> str:
+    segments = draw(st.lists(_PATH_SEGMENT, min_size=1, max_size=5))
+    path = segments[0]
+    for segment in segments[1:]:
+        path += draw(st.sampled_from(["\\", "/"])) + segment
+    return path
+
+
+class TestBasenameLengthProperties:
+    @given(_result_path())
+    def test_matches_pure_windows_path_name(self, path: str):
+        # Both treat "\\" and "/" as separators on every OS, so the property is platform-independent.
+        assert_that(_basename_length(path)).is_equal_to(len(PureWindowsPath(path).name))
+
+
+_RESULTS = st.lists(
+    st.tuples(
+        st.text(max_size=12),
+        st.integers(min_value=0, max_value=5),
+        st.integers(min_value=0, max_value=10),
+        st.booleans(),
+    ),
+    max_size=20,
+)
+
+
+class TestResultModelProperties:
+    @settings(max_examples=50)
+    @given(_RESULTS)
+    def test_keys_stay_sorted(self, qapp, results):  # noqa: ARG002 - qapp ensures a QApplication exists
+        model = _ResultModel(_RecencyStore())
+        model.add_batch(results)
+        assert_that(model._keys).is_equal_to(sorted(model._keys))
