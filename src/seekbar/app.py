@@ -60,6 +60,7 @@ if sys.platform == "win32":
 
     from seekbar import hotkey as _hotkey
 
+    # _HotkeyFilter reads ctypes.wintypes.MSG, a Windows-only type unresolved off Windows
     # noinspection PyUnresolvedReferences
     class _HotkeyFilter(QAbstractNativeEventFilter):
         def __init__(self, callback: Callable[[], object]) -> None:
@@ -76,7 +77,7 @@ if sys.platform == "win32":
             return False, 0
 
 else:  # pragma: no cover - non-Windows fallback
-    _hotkey = None  # type: ignore[assignment]
+    _hotkey = None
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -496,6 +497,7 @@ class MainWindow(QWidget):
         palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(self._theme.on_surface_variant))
         self._search_input.setPalette(palette)
 
+    # instance method by design - groups with the other _build_* widget builders
     # noinspection PyMethodMayBeStatic
     def _build_status_label(self) -> QLabel:
         label = QLabel()
@@ -548,6 +550,7 @@ class MainWindow(QWidget):
         painter.end()
         return QIcon(pixmap)
 
+    # instance method by design - groups with the other _build_* widget builders
     # noinspection PyMethodMayBeStatic
     def _build_separator(self) -> QFrame:
         separator = QFrame()
@@ -596,11 +599,11 @@ class MainWindow(QWidget):
         def render_cells(group: list[tuple[tuple[str, ...], str]], index: int) -> str:
             if index >= len(group):
                 return "<td></td><td></td>"
-            keys, description = group[index]
-            caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in keys]
+            cell_keys, cell_description = group[index]
+            cell_caps = [f'<span style="{cap}">&nbsp;{k}&nbsp;</span>' for k in cell_keys]
             return (
-                f'<td align="right" style="padding:3px 0;">{key_sep.join(caps)}</td>'
-                f'<td style="{desc_style} padding:3px 8px;">{description}</td>'
+                f'<td align="right" style="padding:3px 0;">{key_sep.join(cell_caps)}</td>'
+                f'<td style="{desc_style} padding:3px 8px;">{cell_description}</td>'
             )
 
         divider_col = f'<td style="border-left:1px solid {theme.outline}; padding:0 8px;"></td>'
@@ -1163,6 +1166,7 @@ class MainWindow(QWidget):
             self.raise_()
             self.activateWindow()
             if sys.platform == "win32":
+                # windll.user32.SetForegroundWindow is a dynamic WinDLL attribute, Windows-only
                 # noinspection PyUnresolvedReferences
                 ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
             self._search_input.setFocus()
