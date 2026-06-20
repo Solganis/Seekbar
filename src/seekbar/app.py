@@ -908,7 +908,8 @@ class MainWindow(QWidget):
         self._stop_searching_animation()
         self._result_list.setUpdatesEnabled(False)
         for path, score, depth, is_dir in results:
-            key = (score, depth, len(Path(path).name))
+            # Basename length without allocating a Path, used only as a sort tiebreaker.
+            key = (score, depth, len(path) - max(path.rfind("\\"), path.rfind("/")) - 1)
             pos = bisect.bisect_right(self._sort_keys, key)
             self._sort_keys.insert(pos, key)
             item = QListWidgetItem()

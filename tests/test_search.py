@@ -810,6 +810,27 @@ class TestIsUnderSkipDir:
         strategy._skip_refs = set()
         assert_that(strategy._is_under_skip_dir(10)).is_false()
 
+    def test_uses_skip_cache(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (20, "file.txt", False),
+            20: (5, "node_modules", True),
+        }
+        strategy._skip_cache = {20: True}
+        assert_that(strategy._is_under_skip_dir(10)).is_true()
+        assert_that(strategy._skip_cache[10]).is_true()
+
+    def test_caches_negative_result(self):
+        strategy = MftSearchStrategy("C:")
+        strategy._records = {
+            10: (20, "file.txt", False),
+            20: (5, "regular", True),
+        }
+        strategy._skip_refs = set()
+        assert_that(strategy._is_under_skip_dir(10)).is_false()
+        assert_that(strategy._skip_cache[10]).is_false()
+        assert_that(strategy._skip_cache[20]).is_false()
+
 
 class TestSearchWorkerStrategy:
     @pytest.mark.usefixtures("qtbot")
