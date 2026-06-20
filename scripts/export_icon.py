@@ -34,8 +34,8 @@ def image_to_png_bytes(image: QImage) -> bytes:
     """Serialize a QImage to PNG bytes."""
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-    image.save(buffer, "PNG")
-    png_data = bytes(buffer.data())
+    image.save(buffer, "PNG")  # ty: ignore[no-matching-overload] - PySide6 stub types format as bytes, needs str
+    png_data = bytes(buffer.data().data())
     buffer.close()
     return png_data
 
