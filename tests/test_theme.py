@@ -2,6 +2,7 @@ import dataclasses
 from unittest.mock import MagicMock, patch
 
 import pytest
+from assertpy2 import assert_that
 from PySide6.QtCore import Qt
 
 from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, contrast_ratio, resolve_theme
@@ -9,61 +10,61 @@ from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, contrast_ra
 
 class TestThemeMode:
     def test_values(self):
-        assert ThemeMode.AUTO.value == "auto"
-        assert ThemeMode.DARK.value == "dark"
-        assert ThemeMode.LIGHT.value == "light"
+        assert_that(ThemeMode.AUTO.value).is_equal_to("auto")
+        assert_that(ThemeMode.DARK.value).is_equal_to("dark")
+        assert_that(ThemeMode.LIGHT.value).is_equal_to("light")
 
     def test_from_string(self):
-        assert ThemeMode("auto") == ThemeMode.AUTO
-        assert ThemeMode("dark") == ThemeMode.DARK
-        assert ThemeMode("light") == ThemeMode.LIGHT
+        assert_that(ThemeMode("auto")).is_equal_to(ThemeMode.AUTO)
+        assert_that(ThemeMode("dark")).is_equal_to(ThemeMode.DARK)
+        assert_that(ThemeMode("light")).is_equal_to(ThemeMode.LIGHT)
 
     def test_invalid_value(self):
-        with pytest.raises(ValueError, match="invalid"):
-            ThemeMode("invalid")
+        assert_that(ThemeMode).raises(ValueError).when_called_with("invalid").satisfies(
+            lambda message: "invalid" in message
+        )
 
 
 class TestTheme:
     def test_frozen(self):
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            DARK_THEME.surface = "#000000"  # ty: ignore[invalid-assignment] - intentionally testing frozen enforcement
+        assert_that(setattr).raises(dataclasses.FrozenInstanceError).when_called_with(DARK_THEME, "surface", "#000000")
 
     def test_slots(self):
-        assert hasattr(DARK_THEME, "__slots__")
+        assert_that(hasattr(DARK_THEME, "__slots__")).is_true()
 
     def test_dark_theme_fields(self):
-        assert DARK_THEME.surface == "#1E1E1E"
-        assert DARK_THEME.surface_variant == "#2C2C2C"
-        assert DARK_THEME.on_surface == "#E0E0E0"
-        assert DARK_THEME.on_surface_variant == "#959595"
-        assert DARK_THEME.primary == "#BB86FC"
-        assert DARK_THEME.outline == "#333333"
-        assert DARK_THEME.hover == "#252525"
-        assert DARK_THEME.selected == "#332D41"
-        assert DARK_THEME.folder_color == "#B39B6E"
-        assert DARK_THEME.file_color == "#707070"
-        assert DARK_THEME.file_fold_color == "#808080"
+        assert_that(DARK_THEME.surface).is_equal_to("#1E1E1E")
+        assert_that(DARK_THEME.surface_variant).is_equal_to("#2C2C2C")
+        assert_that(DARK_THEME.on_surface).is_equal_to("#E0E0E0")
+        assert_that(DARK_THEME.on_surface_variant).is_equal_to("#959595")
+        assert_that(DARK_THEME.primary).is_equal_to("#BB86FC")
+        assert_that(DARK_THEME.outline).is_equal_to("#333333")
+        assert_that(DARK_THEME.hover).is_equal_to("#252525")
+        assert_that(DARK_THEME.selected).is_equal_to("#332D41")
+        assert_that(DARK_THEME.folder_color).is_equal_to("#B39B6E")
+        assert_that(DARK_THEME.file_color).is_equal_to("#707070")
+        assert_that(DARK_THEME.file_fold_color).is_equal_to("#808080")
 
     def test_light_theme_fields(self):
-        assert LIGHT_THEME.surface == "#F5F5F5"
-        assert LIGHT_THEME.surface_variant == "#E8E8E8"
-        assert LIGHT_THEME.on_surface == "#1C1C1C"
-        assert LIGHT_THEME.on_surface_variant == "#595959"
-        assert LIGHT_THEME.primary == "#6750A4"
-        assert LIGHT_THEME.outline == "#C8C8C8"
-        assert LIGHT_THEME.hover == "#ECECEC"
-        assert LIGHT_THEME.selected == "#E8DEF8"
-        assert LIGHT_THEME.folder_color == "#8B7340"
-        assert LIGHT_THEME.file_color == "#808080"
-        assert LIGHT_THEME.file_fold_color == "#909090"
+        assert_that(LIGHT_THEME.surface).is_equal_to("#F5F5F5")
+        assert_that(LIGHT_THEME.surface_variant).is_equal_to("#E8E8E8")
+        assert_that(LIGHT_THEME.on_surface).is_equal_to("#1C1C1C")
+        assert_that(LIGHT_THEME.on_surface_variant).is_equal_to("#595959")
+        assert_that(LIGHT_THEME.primary).is_equal_to("#6750A4")
+        assert_that(LIGHT_THEME.outline).is_equal_to("#C8C8C8")
+        assert_that(LIGHT_THEME.hover).is_equal_to("#ECECEC")
+        assert_that(LIGHT_THEME.selected).is_equal_to("#E8DEF8")
+        assert_that(LIGHT_THEME.folder_color).is_equal_to("#8B7340")
+        assert_that(LIGHT_THEME.file_color).is_equal_to("#808080")
+        assert_that(LIGHT_THEME.file_fold_color).is_equal_to("#909090")
 
     def test_dark_and_light_differ(self):
-        assert DARK_THEME != LIGHT_THEME
+        assert_that(DARK_THEME).is_not_equal_to(LIGHT_THEME)
 
     def test_all_fields_are_strings(self):
         for field in dataclasses.fields(Theme):
-            assert isinstance(getattr(DARK_THEME, field.name), str)
-            assert isinstance(getattr(LIGHT_THEME, field.name), str)
+            assert_that(getattr(DARK_THEME, field.name)).is_instance_of(str)
+            assert_that(getattr(LIGHT_THEME, field.name)).is_instance_of(str)
 
 
 class TestResolveTheme:
@@ -74,42 +75,42 @@ class TestResolveTheme:
         return patch("seekbar.theme.QGuiApplication.instance", return_value=mock_app)
 
     def test_dark_mode(self):
-        assert resolve_theme(ThemeMode.DARK) is DARK_THEME
+        assert_that(resolve_theme(ThemeMode.DARK)).is_same_as(DARK_THEME)
 
     def test_light_mode(self):
-        assert resolve_theme(ThemeMode.LIGHT) is LIGHT_THEME
+        assert_that(resolve_theme(ThemeMode.LIGHT)).is_same_as(LIGHT_THEME)
 
     def test_auto_light_system(self):
         with self._patch_scheme(Qt.ColorScheme.Light):
-            assert resolve_theme(ThemeMode.AUTO) is LIGHT_THEME
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(LIGHT_THEME)
 
     def test_auto_dark_system(self):
         with self._patch_scheme(Qt.ColorScheme.Dark):
-            assert resolve_theme(ThemeMode.AUTO) is DARK_THEME
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
 
     def test_auto_unknown_system(self):
         with self._patch_scheme(Qt.ColorScheme.Unknown):
-            assert resolve_theme(ThemeMode.AUTO) is DARK_THEME
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
 
     def test_auto_no_app(self):
         with patch("seekbar.theme.QGuiApplication.instance", return_value=None):
-            assert resolve_theme(ThemeMode.AUTO) is DARK_THEME
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
 
 
 class TestContrastRatio:
     def test_same_color(self):
-        assert contrast_ratio("#000000", "#000000") == pytest.approx(1.0)
+        assert_that(contrast_ratio("#000000", "#000000")).is_close_to(1.0, 1e-6)
 
     def test_black_on_white(self):
-        assert contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0)
+        assert_that(contrast_ratio("#000000", "#FFFFFF")).is_close_to(21.0, 1e-6)
 
     def test_order_independent(self):
         ratio_ab = contrast_ratio("#000000", "#FFFFFF")
         ratio_ba = contrast_ratio("#FFFFFF", "#000000")
-        assert ratio_ab == pytest.approx(ratio_ba)
+        assert_that(ratio_ab).is_close_to(ratio_ba, 1e-6)
 
     def test_known_boundary(self):
-        assert contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.1)
+        assert_that(contrast_ratio("#767676", "#FFFFFF")).is_close_to(4.54, 0.1)
 
 
 class TestWcagContrast:
@@ -128,4 +129,4 @@ class TestWcagContrast:
     def test_text_on_background(self, theme: Theme, text_attr: str, bg_attr: str):
         text = getattr(theme, text_attr)
         background = getattr(theme, bg_attr)
-        assert contrast_ratio(text, background) >= self._AA_RATIO
+        assert_that(contrast_ratio(text, background)).is_greater_than_or_equal_to(self._AA_RATIO)

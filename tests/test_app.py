@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+from assertpy2 import assert_that
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
@@ -23,59 +24,59 @@ if TYPE_CHECKING:
 
 class TestMainWindow:
     def test_window_title(self, window: MainWindow):
-        assert window.windowTitle() == "Seekbar"
+        assert_that(window.windowTitle()).is_equal_to("Seekbar")
 
     def test_frameless(self, window: MainWindow):
-        assert window.windowFlags() & Qt.WindowType.FramelessWindowHint
+        assert_that(window.windowFlags() & Qt.WindowType.FramelessWindowHint).is_true()
 
     def test_fixed_width(self, window: MainWindow):
-        assert window.width() == 620
+        assert_that(window.width()).is_equal_to(620)
 
     def test_initial_results_hidden(self, window: MainWindow):
-        assert window._result_list.isHidden()
-        assert window._separator.isHidden()
+        assert_that(window._result_list.isHidden()).is_true()
+        assert_that(window._separator.isHidden()).is_true()
 
     def test_initial_status_empty(self, window: MainWindow):
-        assert window._status_label.text() == ""
+        assert_that(window._status_label.text()).is_empty()
 
     def test_initial_height(self, window: MainWindow):
         expected = window._search_height + window._MARGIN * 2
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
     def test_delegate_size_hint(self, window: MainWindow):
         delegate = window._delegate
         size = delegate.sizeHint(QStyleOptionViewItem(), QModelIndex())
-        assert size.height() == delegate.item_height
+        assert_that(size.height()).is_equal_to(delegate.item_height)
 
     def test_delegate_item_height_from_metrics(self, window: MainWindow):
         delegate = window._delegate
         expected = delegate._name_metrics.height() + delegate._path_metrics.height() + delegate._VERTICAL_PADDING
-        assert delegate.item_height == expected
+        assert_that(delegate.item_height).is_equal_to(expected)
 
     def test_delegate_has_cached_fonts(self, window: MainWindow):
         delegate = window._result_list.itemDelegate()
-        assert hasattr(delegate, "_name_font")
-        assert hasattr(delegate, "_path_font")
-        assert hasattr(delegate, "_name_metrics")
-        assert hasattr(delegate, "_path_metrics")
+        assert_that(hasattr(delegate, "_name_font")).is_true()
+        assert_that(hasattr(delegate, "_path_font")).is_true()
+        assert_that(hasattr(delegate, "_name_metrics")).is_true()
+        assert_that(hasattr(delegate, "_path_metrics")).is_true()
 
 
 class TestFontFamily:
     def test_font_family_not_empty(self):
-        assert _FONT_FAMILY
-        assert isinstance(_FONT_FAMILY, str)
+        assert_that(_FONT_FAMILY).is_not_empty()
+        assert_that(_FONT_FAMILY).is_instance_of(str)
 
     def test_windows_font(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
-        assert _system_font_family() == "Segoe UI"
+        assert_that(_system_font_family()).is_equal_to("Segoe UI")
 
     def test_darwin_font(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
-        assert _system_font_family() == ".AppleSystemUIFont"
+        assert_that(_system_font_family()).is_equal_to(".AppleSystemUIFont")
 
     def test_linux_font(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
-        assert _system_font_family() == "Sans"
+        assert_that(_system_font_family()).is_equal_to("Sans")
 
 
 class TestSortedInsertion:
@@ -85,7 +86,7 @@ class TestSortedInsertion:
         window._add_result("C:/dir/hosts.txt", 1)
 
         paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
-        assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"]
+        assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"])
 
     def test_secondary_sort_by_name_length(self, window: MainWindow):
         window._add_result("C:/dir/ab_hosts", 4)
@@ -95,19 +96,19 @@ class TestSortedInsertion:
             Path(window._result_list.item(i).data(Qt.ItemDataRole.UserRole)).name
             for i in range(window._result_list.count())
         ]
-        assert names == ["a_hosts", "ab_hosts"]
+        assert_that(names).is_equal_to(["a_hosts", "ab_hosts"])
 
     def test_depth_sort_tiebreaker(self, window: MainWindow):
         window._add_result("C:/a/b/c/hosts", 0, depth=3)
         window._add_result("C:/hosts", 0, depth=1)
 
         paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
-        assert paths == ["C:/hosts", "C:/a/b/c/hosts"]
+        assert_that(paths).is_equal_to(["C:/hosts", "C:/a/b/c/hosts"])
 
     def test_results_become_visible(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
-        assert not window._result_list.isHidden()
-        assert not window._separator.isHidden()
+        assert_that(window._result_list.isHidden()).is_false()
+        assert_that(window._separator.isHidden()).is_false()
 
 
 class TestHeightSync:
@@ -115,14 +116,14 @@ class TestHeightSync:
         window._add_result("C:/test/file.txt", 4)
         item_h = window._delegate.item_height
         expected = window._search_height + 1 + item_h + window._RADIUS + window._MARGIN * 2
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
     def test_capped_at_max_visible(self, window: MainWindow):
         for i in range(window._MAX_VISIBLE + 5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
         item_h = window._delegate.item_height
         expected = window._search_height + 1 + window._MAX_VISIBLE * item_h + window._RADIUS + window._MARGIN * 2
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
 
 class TestSearchLifecycle:
@@ -130,47 +131,47 @@ class TestSearchLifecycle:
         window._search_input.setText("query")
         window._add_result("C:/test/file.txt", 4)
         window._search_input.setText("")
-        assert window._result_list.count() == 0
-        assert window._status_label.text() == ""
-        assert window._result_list.isHidden()
+        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._status_label.text()).is_empty()
+        assert_that(window._result_list.isHidden()).is_true()
 
     def test_status_updates_on_add(self, window: MainWindow):
         window._add_result("C:/test/a.txt", 4)
-        assert "1" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("1")
         window._add_result("C:/test/b.txt", 4)
-        assert "2" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("2")
 
     def test_done_no_results(self, window: MainWindow):
         window._on_search_done(0)
-        assert window._status_label.text() == "no results"
+        assert_that(window._status_label.text()).is_equal_to("no results")
 
     def test_done_with_results(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
         window._on_search_done(1)
-        assert "1" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("1")
 
     def test_add_result_ignored_without_worker(self, window: MainWindow):
         window._worker = None
         window._add_result("C:/test/stale.txt", 4)
-        assert window._result_list.count() == 0
+        assert_that(window._result_list.count()).is_equal_to(0)
 
     def test_done_ignored_without_worker(self, window: MainWindow):
         window._worker = None
         window._status_label.setText("searching.")
         window._on_search_done(0)
-        assert window._status_label.text() == "searching."
+        assert_that(window._status_label.text()).is_equal_to("searching.")
 
     def test_clear_text_stops_debounce_timer(self, window: MainWindow):
         window._search_input.setText("query")
-        assert window._debounce_timer.isActive()
+        assert_that(window._debounce_timer.isActive()).is_true()
         window._search_input.setText("")
-        assert not window._debounce_timer.isActive()
+        assert_that(window._debounce_timer.isActive()).is_false()
 
     def test_typing_shows_searching_immediately(self, window: MainWindow):
         window._on_search_done(0)
-        assert window._status_label.text() == "no results"
+        assert_that(window._status_label.text()).is_equal_to("no results")
         window._search_input.setText("newquery")
-        assert window._status_label.text() == "searching."
+        assert_that(window._status_label.text()).is_equal_to("searching.")
 
     def test_typing_stops_previous_search(self, window: MainWindow):
         mock_worker = MagicMock()
@@ -184,7 +185,7 @@ class TestSearchLifecycle:
         mock_worker = MagicMock()
         monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
         window._start_search()
-        assert window._status_label.text() == "searching."
+        assert_that(window._status_label.text()).is_equal_to("searching.")
         mock_worker.start.assert_called_once()
 
     def test_start_search_empty(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
@@ -198,11 +199,11 @@ class TestSearchLifecycle:
         window._search_input.blockSignals(True)
         window._search_input.setText("test")
         window._search_input.blockSignals(False)
-        assert not window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_false()
         mock_worker = MagicMock()
         monkeypatch.setattr(seekbar.app, "SearchWorker", lambda _q: mock_worker)
         window._start_search()
-        assert window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_true()
 
     def test_start_search_immediate(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._search_input.setText("test")
@@ -218,7 +219,7 @@ class TestSearchLifecycle:
         window._stop_search()
         mock_worker.stop.assert_called_once()
         mock_worker.wait.assert_called_once_with(3000)
-        assert window._worker is None
+        assert_that(window._worker).is_none()
 
 
 class TestWindowDragging:
@@ -227,13 +228,13 @@ class TestWindowDragging:
         event.button.return_value = Qt.MouseButton.LeftButton
         event.globalPosition.return_value.toPoint.return_value = QPoint(500, 300)
         window.mousePressEvent(event)
-        assert window._drag_pos is not None
+        assert_that(window._drag_pos).is_not_none()
 
     def test_press_right_button_no_drag(self, window: MainWindow):
         event = MagicMock()
         event.button.return_value = Qt.MouseButton.RightButton
         window.mousePressEvent(event)
-        assert window._drag_pos is None
+        assert_that(window._drag_pos).is_none()
 
     def test_move_with_drag(self, window: MainWindow):
         window._drag_pos = QPoint(10, 10)
@@ -241,7 +242,7 @@ class TestWindowDragging:
         event.buttons.return_value = Qt.MouseButton.LeftButton
         event.globalPosition.return_value.toPoint.return_value = QPoint(200, 200)
         window.mouseMoveEvent(event)
-        assert window.pos() == QPoint(190, 190)
+        assert_that(window.pos()).is_equal_to(QPoint(190, 190))
 
     def test_move_without_drag(self, window: MainWindow):
         initial_pos = window.pos()
@@ -249,13 +250,13 @@ class TestWindowDragging:
         event.buttons.return_value = Qt.MouseButton.LeftButton
         event.globalPosition.return_value.toPoint.return_value = QPoint(200, 200)
         window.mouseMoveEvent(event)
-        assert window.pos() == initial_pos
+        assert_that(window.pos()).is_equal_to(initial_pos)
 
     def test_release_clears_drag(self, window: MainWindow):
         window._drag_pos = QPoint(10, 10)
         event = MagicMock()
         window.mouseReleaseEvent(event)
-        assert window._drag_pos is None
+        assert_that(window._drag_pos).is_none()
 
 
 class TestKeyboardNavigation:
@@ -263,59 +264,59 @@ class TestKeyboardNavigation:
         window.show()
         window._search_input.setText("query")
         qtbot.keyClick(window, Qt.Key.Key_Escape)
-        assert window._search_input.text() == ""
-        assert window.isVisible()
+        assert_that(window._search_input.text()).is_empty()
+        assert_that(window.isVisible()).is_true()
 
     def test_escape_closes_when_empty(self, window: MainWindow, qtbot: QtBot):
         window.show()
         qtbot.keyClick(window, Qt.Key.Key_Escape)
-        assert not window.isVisible()
+        assert_that(window.isVisible()).is_false()
 
     def test_close_button(self, window: MainWindow, qtbot: QtBot):
         window.show()
         qtbot.mouseClick(window._close_button, Qt.MouseButton.LeftButton)
-        assert not window.isVisible()
+        assert_that(window.isVisible()).is_false()
 
     def test_tab_does_not_change_focus(self, window: MainWindow):
-        assert window.focusNextPrevChild(True) is True
+        assert_that(window.focusNextPrevChild(True)).is_true()
 
     def test_backtab_does_not_change_focus(self, window: MainWindow):
-        assert window.focusNextPrevChild(False) is True
+        assert_that(window.focusNextPrevChild(False)).is_true()
 
     def test_non_escape_key(self, window: MainWindow, qtbot: QtBot):
         window.show()
         qtbot.keyClick(window, Qt.Key.Key_A)
-        assert window.isVisible()
+        assert_that(window.isVisible()).is_true()
 
     def test_key_down_selects_first(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert window._result_list.currentRow() == 0
+        assert_that(window._result_list.currentRow()).is_equal_to(0)
 
     def test_key_down_advances(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
         window._result_list.setCurrentRow(0)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert window._result_list.currentRow() == 1
+        assert_that(window._result_list.currentRow()).is_equal_to(1)
 
     def test_key_down_stays_at_bottom(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
         window._result_list.setCurrentRow(1)
         qtbot.keyClick(window, Qt.Key.Key_Down)
-        assert window._result_list.currentRow() == 1
+        assert_that(window._result_list.currentRow()).is_equal_to(1)
 
     def test_key_up_stays_at_top(self, window: MainWindow, qtbot: QtBot):
         window._add_result("C:/test/a.txt", 4)
         window._result_list.setCurrentRow(0)
         qtbot.keyClick(window, Qt.Key.Key_Up)
-        assert window._result_list.currentRow() == 0
+        assert_that(window._result_list.currentRow()).is_equal_to(0)
 
     def test_move_selection_empty_list(self, window: MainWindow):
         window._move_selection(1)
-        assert window._result_list.currentRow() == -1
+        assert_that(window._result_list.currentRow()).is_equal_to(-1)
 
     def test_enter_opens_selected(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         window._add_result("C:/test/hosts", 0)
@@ -346,7 +347,7 @@ class TestKeyboardNavigation:
     def test_ctrl_t_cycles_theme(self, window: MainWindow, qtbot: QtBot):
         initial_mode = window._theme_mode
         qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
-        assert window._theme_mode != initial_mode
+        assert_that(window._theme_mode).is_not_equal_to(initial_mode)
 
     def test_ctrl_q_quits(self, window: MainWindow, qtbot: QtBot):
         with patch.object(seekbar.app.QApplication, "quit") as mock_quit:
@@ -405,69 +406,69 @@ class TestIsDirRole:
     def test_file_default(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
         item = window._result_list.item(0)
-        assert item.data(_IS_DIR_ROLE) is False
+        assert_that(item.data(_IS_DIR_ROLE)).is_false()
 
     def test_directory_stored(self, window: MainWindow):
         window._add_result("C:/test/folder", 4, is_dir=True)
         item = window._result_list.item(0)
-        assert item.data(_IS_DIR_ROLE) is True
+        assert_that(item.data(_IS_DIR_ROLE)).is_true()
 
 
 class TestResultDelegate:
     def test_has_folder_icon(self, window: MainWindow):
         delegate = window._delegate
-        assert delegate.folder_icon is not None
-        assert not delegate.folder_icon.isNull()
+        assert_that(delegate.folder_icon).is_not_none()
+        assert_that(delegate.folder_icon.isNull()).is_false()
 
     def test_has_file_icon(self, window: MainWindow):
         delegate = window._delegate
-        assert delegate.file_icon is not None
-        assert not delegate.file_icon.isNull()
+        assert_that(delegate.file_icon).is_not_none()
+        assert_that(delegate.file_icon.isNull()).is_false()
 
     def test_icon_size(self, window: MainWindow):
         delegate = window._delegate
-        assert delegate.folder_icon.width() == 20
-        assert delegate.folder_icon.height() == 20
-        assert delegate.file_icon.width() == 20
-        assert delegate.file_icon.height() == 20
+        assert_that(delegate.folder_icon.width()).is_equal_to(20)
+        assert_that(delegate.folder_icon.height()).is_equal_to(20)
+        assert_that(delegate.file_icon.width()).is_equal_to(20)
+        assert_that(delegate.file_icon.height()).is_equal_to(20)
 
     def test_set_theme_rebuilds_icons(self, window: MainWindow):
         delegate = window._delegate
         old_folder = delegate.folder_icon
         old_file = delegate.file_icon
         delegate.set_theme(LIGHT_THEME)
-        assert delegate._theme is LIGHT_THEME
-        assert delegate.folder_icon is not old_folder
-        assert delegate.file_icon is not old_file
-        assert not delegate.folder_icon.isNull()
-        assert not delegate.file_icon.isNull()
+        assert_that(delegate._theme).is_same_as(LIGHT_THEME)
+        assert_that(delegate.folder_icon).is_not_same_as(old_folder)
+        assert_that(delegate.file_icon).is_not_same_as(old_file)
+        assert_that(delegate.folder_icon.isNull()).is_false()
+        assert_that(delegate.file_icon.isNull()).is_false()
 
 
 class TestThemeSwitching:
     def test_default_mode_is_auto(self, window: MainWindow):
-        assert window._theme_mode == ThemeMode.AUTO
+        assert_that(window._theme_mode).is_equal_to(ThemeMode.AUTO)
 
     def test_cycle_auto_to_light(self, window: MainWindow):
         window._cycle_theme()
-        assert window._theme_mode == ThemeMode.LIGHT
+        assert_that(window._theme_mode).is_equal_to(ThemeMode.LIGHT)
 
     def test_cycle_light_to_dark(self, window: MainWindow):
         window._theme_mode = ThemeMode.LIGHT
         window._cycle_theme()
-        assert window._theme_mode == ThemeMode.DARK
+        assert_that(window._theme_mode).is_equal_to(ThemeMode.DARK)
 
     def test_cycle_dark_to_auto(self, window: MainWindow):
         window._theme_mode = ThemeMode.DARK
         window._cycle_theme()
-        assert window._theme_mode == ThemeMode.AUTO
+        assert_that(window._theme_mode).is_equal_to(ThemeMode.AUTO)
 
     def test_cycle_applies_theme(self, window: MainWindow):
         window._cycle_theme()
-        assert window._theme is LIGHT_THEME
+        assert_that(window._theme).is_same_as(LIGHT_THEME)
 
     def test_set_theme_updates_delegate(self, window: MainWindow):
         window._set_theme(LIGHT_THEME)
-        assert window._delegate._theme is LIGHT_THEME
+        assert_that(window._delegate._theme).is_same_as(LIGHT_THEME)
 
     def test_system_theme_change_in_auto_mode(self, window: MainWindow):
         window._theme_mode = ThemeMode.AUTO
@@ -475,60 +476,60 @@ class TestThemeSwitching:
         mock_app.styleHints.return_value.colorScheme.return_value = Qt.ColorScheme.Light
         with patch("seekbar.theme.QGuiApplication.instance", return_value=mock_app):
             window._on_system_theme_changed(Qt.ColorScheme.Light)
-        assert window._theme is LIGHT_THEME
+        assert_that(window._theme).is_same_as(LIGHT_THEME)
 
     def test_system_theme_change_ignored_in_manual_mode(self, window: MainWindow):
         window._theme_mode = ThemeMode.DARK
         window._set_theme(DARK_THEME)
         window._on_system_theme_changed(Qt.ColorScheme.Light)
-        assert window._theme is DARK_THEME
+        assert_that(window._theme).is_same_as(DARK_THEME)
 
     def test_close_icon_updates_on_theme_switch(self, window: MainWindow):
         old_icon = window._close_button.icon()
         window._set_theme(LIGHT_THEME)
         new_icon = window._close_button.icon()
-        assert old_icon.cacheKey() != new_icon.cacheKey()
+        assert_that(old_icon.cacheKey()).is_not_equal_to(new_icon.cacheKey())
 
 
 class TestThemePersistence:
     def test_cycle_saves_to_settings(self, window: MainWindow):
         window._cycle_theme()
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert settings.value("theme_mode") == ThemeMode.LIGHT.value
+        assert_that(settings.value("theme_mode")).is_equal_to(ThemeMode.LIGHT.value)
 
     def test_load_saved_mode(self, window: MainWindow):
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", "dark")
         loaded = window._load_theme_mode()
-        assert loaded == ThemeMode.DARK
+        assert_that(loaded).is_equal_to(ThemeMode.DARK)
 
     def test_load_invalid_mode_defaults_to_auto(self, window: MainWindow):
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", "garbage")
         loaded = window._load_theme_mode()
-        assert loaded == ThemeMode.AUTO
+        assert_that(loaded).is_equal_to(ThemeMode.AUTO)
 
     def test_load_missing_key_defaults_to_auto(self, window: MainWindow):
         loaded = window._load_theme_mode()
-        assert loaded == ThemeMode.AUTO
+        assert_that(loaded).is_equal_to(ThemeMode.AUTO)
 
 
 class TestResultLimitIndicator:
     def test_format_count_below_limit(self, window: MainWindow):
-        assert window._format_count(50) == "50 results"
+        assert_that(window._format_count(50)).is_equal_to("50 results")
 
     def test_format_count_at_limit(self, window: MainWindow):
-        assert window._format_count(MAX_RESULTS) == f"{MAX_RESULTS}+ results"
+        assert_that(window._format_count(MAX_RESULTS)).is_equal_to(f"{MAX_RESULTS}+ results")
 
     def test_format_count_above_limit(self, window: MainWindow):
-        assert window._format_count(MAX_RESULTS + 1) == f"{MAX_RESULTS}+ results"
+        assert_that(window._format_count(MAX_RESULTS + 1)).is_equal_to(f"{MAX_RESULTS}+ results")
 
     def test_status_shows_limit_on_done(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(seekbar.app, "MAX_RESULTS", 3)
         for i in range(3):
             window._add_result(f"C:/test/file_{i}.txt", 4)
         window._on_search_done(3)
-        assert "3+" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("3+")
 
 
 class TestWindowPositionPersistence:
@@ -537,8 +538,8 @@ class TestWindowPositionPersistence:
         window.move(QPoint(100, 200))
         window.close()
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert settings.value("window_x") == 100
-        assert settings.value("window_y") == 200
+        assert_that(settings.value("window_x")).is_equal_to(100)
+        assert_that(settings.value("window_y")).is_equal_to(200)
 
     def test_restores_saved_position(self, window: MainWindow):
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
@@ -548,7 +549,7 @@ class TestWindowPositionPersistence:
         settings.setValue("window_x", pos_x)
         settings.setValue("window_y", pos_y)
         loaded = window._load_window_position()
-        assert loaded == QPoint(pos_x, pos_y)
+        assert_that(loaded).is_equal_to(QPoint(pos_x, pos_y))
 
     def test_window_uses_saved_position_on_init(self, qtbot: QtBot):
         screen = seekbar.app.QApplication.primaryScreen().geometry()
@@ -559,23 +560,23 @@ class TestWindowPositionPersistence:
         settings.setValue("window_y", pos_y)
         fresh_window = seekbar.app.MainWindow()
         qtbot.addWidget(fresh_window)
-        assert fresh_window.pos() == QPoint(pos_x, pos_y)
+        assert_that(fresh_window.pos()).is_equal_to(QPoint(pos_x, pos_y))
 
     def test_fallback_on_offscreen_position(self, window: MainWindow):
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("window_x", -99999)
         settings.setValue("window_y", -99999)
         loaded = window._load_window_position()
-        assert loaded is None
+        assert_that(loaded).is_none()
 
     def test_fallback_on_missing_position(self, window: MainWindow):
         loaded = window._load_window_position()
-        assert loaded is None
+        assert_that(loaded).is_none()
 
 
 class TestPlaceholder:
     def test_placeholder_text(self, window: MainWindow):
-        assert window._search_input.placeholderText() == "Search all drives..."
+        assert_that(window._search_input.placeholderText()).is_equal_to("Search all drives...")
 
 
 class TestContextMenuIcons:
@@ -587,9 +588,9 @@ class TestContextMenuIcons:
         menu = window.findChild(seekbar.app.QMenu)
         if menu:
             actions = menu.actions()
-            assert len(actions) == 2
-            assert not actions[0].icon().isNull()
-            assert not actions[1].icon().isNull()
+            assert_that(actions).is_length(2)
+            assert_that(actions[0].icon().isNull()).is_false()
+            assert_that(actions[1].icon().isNull()).is_false()
 
 
 class TestBatchInsertion:
@@ -601,7 +602,7 @@ class TestBatchInsertion:
                 ("C:/dir/xhostsy", 4, 1, False),
             ]
         )
-        assert window._result_list.count() == 3
+        assert_that(window._result_list.count()).is_equal_to(3)
 
     def test_batch_sorted_correctly(self, window: MainWindow):
         window._add_results_batch(
@@ -612,7 +613,7 @@ class TestBatchInsertion:
             ]
         )
         paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
-        assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"]
+        assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/xhostsy"])
 
     def test_batch_updates_status_once(self, window: MainWindow):
         window._add_results_batch(
@@ -622,23 +623,23 @@ class TestBatchInsertion:
                 ("C:/dir/c.txt", 4, 1, False),
             ]
         )
-        assert "3" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("3")
 
     def test_batch_syncs_height(self, window: MainWindow):
         window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
         item_h = window._delegate.item_height
         expected = window._search_height + 1 + item_h + window._RADIUS + window._MARGIN * 2
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
     def test_batch_ignored_without_worker(self, window: MainWindow):
         window._worker = None
         window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
-        assert window._result_list.count() == 0
+        assert_that(window._result_list.count()).is_equal_to(0)
 
     def test_batch_empty_list_noop(self, window: MainWindow):
         window._add_results_batch([])
-        assert window._result_list.count() == 0
-        assert window._status_label.text() == ""
+        assert_that(window._result_list.count()).is_equal_to(0)
+        assert_that(window._status_label.text()).is_empty()
 
     def test_batch_preserves_is_dir(self, window: MainWindow):
         window._add_results_batch(
@@ -647,8 +648,8 @@ class TestBatchInsertion:
                 ("C:/dir/file.txt", 4, 1, False),
             ]
         )
-        assert window._result_list.item(0).data(_IS_DIR_ROLE) is True
-        assert window._result_list.item(1).data(_IS_DIR_ROLE) is False
+        assert_that(window._result_list.item(0).data(_IS_DIR_ROLE)).is_true()
+        assert_that(window._result_list.item(1).data(_IS_DIR_ROLE)).is_false()
 
     def test_multiple_batches_merge_correctly(self, window: MainWindow):
         window._add_results_batch(
@@ -664,7 +665,7 @@ class TestBatchInsertion:
             ]
         )
         paths = [window._result_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(window._result_list.count())]
-        assert paths == ["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/myhosts", "C:/dir/xhostsy"]
+        assert_that(paths).is_equal_to(["C:/dir/hosts", "C:/dir/hosts.txt", "C:/dir/myhosts", "C:/dir/xhostsy"])
 
 
 class TestExtendedNavigation:
@@ -673,73 +674,73 @@ class TestExtendedNavigation:
             window._add_result(f"C:/test/file_{i:02d}.txt", 4)
         window._result_list.setCurrentRow(0)
         qtbot.keyClick(window, Qt.Key.Key_PageDown)
-        assert window._result_list.currentRow() == window._MAX_VISIBLE
+        assert_that(window._result_list.currentRow()).is_equal_to(window._MAX_VISIBLE)
 
     def test_page_up(self, window: MainWindow, qtbot: QtBot):
         for i in range(20):
             window._add_result(f"C:/test/file_{i:02d}.txt", 4)
         window._result_list.setCurrentRow(15)
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
-        assert window._result_list.currentRow() == 15 - window._MAX_VISIBLE
+        assert_that(window._result_list.currentRow()).is_equal_to(15 - window._MAX_VISIBLE)
 
     def test_page_down_clamps_to_last(self, window: MainWindow, qtbot: QtBot):
         for i in range(5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
         window._result_list.setCurrentRow(3)
         qtbot.keyClick(window, Qt.Key.Key_PageDown)
-        assert window._result_list.currentRow() == 4
+        assert_that(window._result_list.currentRow()).is_equal_to(4)
 
     def test_page_up_clamps_to_first(self, window: MainWindow, qtbot: QtBot):
         for i in range(5):
             window._add_result(f"C:/test/file_{i}.txt", 4)
         window._result_list.setCurrentRow(1)
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
-        assert window._result_list.currentRow() == 0
+        assert_that(window._result_list.currentRow()).is_equal_to(0)
 
 
 class TestSearchingAnimation:
     def test_start_sets_initial_text(self, window: MainWindow):
         window._start_searching_animation()
-        assert window._status_label.text() == "searching."
-        assert window._searching_timer.isActive()
+        assert_that(window._status_label.text()).is_equal_to("searching.")
+        assert_that(window._searching_timer.isActive()).is_true()
 
     def test_stop_stops_timer(self, window: MainWindow):
         window._start_searching_animation()
         window._stop_searching_animation()
-        assert not window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_false()
 
     def test_cycle_one_to_two(self, window: MainWindow):
         window._status_label.setText("searching.")
         window._animate_searching()
-        assert window._status_label.text() == "searching.."
+        assert_that(window._status_label.text()).is_equal_to("searching..")
 
     def test_cycle_two_to_three(self, window: MainWindow):
         window._status_label.setText("searching..")
         window._animate_searching()
-        assert window._status_label.text() == "searching..."
+        assert_that(window._status_label.text()).is_equal_to("searching...")
 
     def test_cycle_three_to_one(self, window: MainWindow):
         window._status_label.setText("searching...")
         window._animate_searching()
-        assert window._status_label.text() == "searching."
+        assert_that(window._status_label.text()).is_equal_to("searching.")
 
     def test_clear_text_stops_animation(self, window: MainWindow):
         window._search_input.setText("query")
-        assert window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_true()
         window._search_input.setText("")
-        assert not window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_false()
 
     def test_batch_stops_animation(self, window: MainWindow):
         window._start_searching_animation()
-        assert window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_true()
         window._add_results_batch([("C:/dir/a.txt", 4, 1, False)])
-        assert not window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_false()
 
     def test_search_done_stops_animation(self, window: MainWindow):
         window._start_searching_animation()
-        assert window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_true()
         window._on_search_done(0)
-        assert not window._searching_timer.isActive()
+        assert_that(window._searching_timer.isActive()).is_false()
 
 
 class TestErrorFeedback:
@@ -748,13 +749,13 @@ class TestErrorFeedback:
         mock_desktop.openUrl.return_value = False
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_file_by_path("C:/nonexistent/file.txt")
-        assert window._status_label.text() == "Failed to open file"
+        assert_that(window._status_label.text()).is_equal_to("Failed to open file")
 
     def test_open_folder_oserror(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
         monkeypatch.setattr(seekbar.app.subprocess, "run", MagicMock(side_effect=OSError))
         window._open_folder("C:/test/hosts")
-        assert window._status_label.text() == "Failed to open folder"
+        assert_that(window._status_label.text()).is_equal_to("Failed to open folder")
 
     def test_open_folder_linux_failure(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -762,65 +763,65 @@ class TestErrorFeedback:
         mock_desktop.openUrl.return_value = False
         monkeypatch.setattr(seekbar.app, "QDesktopServices", mock_desktop)
         window._open_folder("/home/test/file.txt")
-        assert window._status_label.text() == "Failed to open folder"
+        assert_that(window._status_label.text()).is_equal_to("Failed to open folder")
 
 
 class TestTempStatus:
     def test_shows_message(self, window: MainWindow):
         window._show_temp_status("Error occurred")
-        assert window._status_label.text() == "Error occurred"
+        assert_that(window._status_label.text()).is_equal_to("Error occurred")
 
     def test_restore_with_results(self, window: MainWindow):
         window._add_result("C:/test/a.txt", 4)
         window._add_result("C:/test/b.txt", 4)
         window._show_temp_status("Error")
         window._restore_status()
-        assert "2" in window._status_label.text()
+        assert_that(window._status_label.text()).contains("2")
 
     def test_restore_without_results(self, window: MainWindow):
         window._show_temp_status("Error")
         window._restore_status()
-        assert window._status_label.text() == ""
+        assert_that(window._status_label.text()).is_empty()
 
 
 class TestHelpPopup:
     def test_initially_hidden(self, window: MainWindow):
-        assert window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
 
     def test_toggle_shows(self, window: MainWindow):
         window._toggle_help()
-        assert not window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_false()
 
     def test_toggle_twice_hides(self, window: MainWindow):
         window._toggle_help()
         window._toggle_help()
-        assert window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
 
     def test_f1_key_toggles(self, window: MainWindow, qtbot: QtBot):
         qtbot.keyClick(window, Qt.Key.Key_F1)
-        assert not window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_false()
 
     def test_text_change_hides_help(self, window: MainWindow):
         window._toggle_help()
-        assert not window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_false()
         window._search_input.setText("query")
-        assert window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
 
     def test_hide_popups_when_visible(self, window: MainWindow):
         window._toggle_help()
         window._hide_popups()
-        assert window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
 
     def test_hide_popups_when_already_hidden(self, window: MainWindow):
         window._hide_popups()
-        assert window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
 
     def test_help_content(self, window: MainWindow):
         html = window._help_popup.text()
-        assert "Esc" in html
-        assert "Ctrl+Q" in html
-        assert "F1" in html
-        assert "<table" in html
+        assert_that(html).contains("Esc")
+        assert_that(html).contains("Ctrl+Q")
+        assert_that(html).contains("F1")
+        assert_that(html).contains("<table")
 
     def test_help_html_uneven_groups(self, window: MainWindow):
         shortcuts = (
@@ -831,77 +832,77 @@ class TestHelpPopup:
         )
         with patch("seekbar.app._HELP_SHORTCUTS", shortcuts):
             html = window._help_html()
-        assert "<td></td><td></td>" in html
+        assert_that(html).contains("<td></td><td></td>")
 
     def test_help_updates_on_theme_switch(self, window: MainWindow):
         old_html = window._help_popup.text()
         window._set_theme(LIGHT_THEME)
         new_html = window._help_popup.text()
-        assert old_html != new_html
+        assert_that(old_html).is_not_equal_to(new_html)
 
     def test_sync_height_with_help(self, window: MainWindow):
         window._toggle_help()
         help_height = window._help_popup.sizeHint().height()
         expected = window._search_height + 1 + help_height + window._RADIUS + window._MARGIN * 2
-        assert window._height_target == expected
+        assert_that(window._height_target).is_equal_to(expected)
         window._finalize_height()
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
     def test_help_hides_results_list(self, window: MainWindow):
         window._add_result("C:/test/file.txt", 4)
         window._toggle_help()
-        assert window._result_list.isHidden()
-        assert not window._separator.isHidden()
+        assert_that(window._result_list.isHidden()).is_true()
+        assert_that(window._separator.isHidden()).is_false()
 
     def test_help_shows_separator_without_results(self, window: MainWindow):
         window._toggle_help()
-        assert not window._separator.isHidden()
-        assert window._result_list.isHidden()
+        assert_that(window._separator.isHidden()).is_false()
+        assert_that(window._result_list.isHidden()).is_true()
 
     def test_batch_skips_sync_when_help_open(self, window: MainWindow):
         window._toggle_help()
         window._finalize_height()
         height_before = window.height()
         window._add_result("C:/test/file.txt", 4)
-        assert window.height() == height_before
+        assert_that(window.height()).is_equal_to(height_before)
 
     def test_done_skips_sync_when_help_open(self, window: MainWindow):
         window._toggle_help()
         window._finalize_height()
         height_before = window.height()
         window._on_search_done(0)
-        assert window.height() == height_before
+        assert_that(window.height()).is_equal_to(height_before)
 
 
 class TestDonatePopup:
     def test_f2_toggles_donate_popup(self, window: MainWindow, qtbot):
-        assert window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_true()
         qtbot.keyClick(window, Qt.Key.Key_F2)
-        assert not window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_false()
         qtbot.keyClick(window, Qt.Key.Key_F2)
-        assert window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_true()
 
     def test_f2_hides_help(self, window: MainWindow):
         window._toggle_help()
-        assert not window._help_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_false()
         window._toggle_donate()
-        assert window._help_popup.isHidden()
-        assert not window._donate_popup.isHidden()
+        assert_that(window._help_popup.isHidden()).is_true()
+        assert_that(window._donate_popup.isHidden()).is_false()
 
     def test_f1_hides_donate(self, window: MainWindow):
         window._toggle_donate()
-        assert not window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_false()
         window._toggle_help()
-        assert window._donate_popup.isHidden()
-        assert not window._help_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_true()
+        assert_that(window._help_popup.isHidden()).is_false()
 
     def test_donate_content(self, window: MainWindow):
         html = window._donate_popup.text()
-        assert "GitHub" in html
-        assert "DonationAlerts" in html
-        assert "Boosty" in html
-        assert "TON" in html
-        assert "USDT" in html
+        assert_that(html).contains("GitHub")
+        assert_that(html).contains("DonationAlerts")
+        assert_that(html).contains("Boosty")
+        assert_that(html).contains("TON")
+        assert_that(html).contains("USDT")
 
     def test_donate_link_opens_url(self, window: MainWindow):
         with patch("seekbar.app.QDesktopServices.openUrl") as mock_open:
@@ -911,25 +912,25 @@ class TestDonatePopup:
     def test_donate_copy_to_clipboard(self, window: MainWindow):
         address = "UQAZDskr7UZE9Hn8Q8asCfmYIsicgL0KS9YNvRJ5NF53OPPo"
         window._on_donate_link(f"copy:{address}")
-        assert seekbar.app.QApplication.clipboard().text() == address
-        assert window._status_label.text() == "Copied!"
+        assert_that(seekbar.app.QApplication.clipboard().text()).is_equal_to(address)
+        assert_that(window._status_label.text()).is_equal_to("Copied!")
 
     def test_donate_updates_on_theme_switch(self, window: MainWindow):
         old_html = window._donate_popup.text()
         window._set_theme(LIGHT_THEME)
         new_html = window._donate_popup.text()
-        assert old_html != new_html
+        assert_that(old_html).is_not_equal_to(new_html)
 
     def test_text_change_hides_donate(self, window: MainWindow):
         window._toggle_donate()
-        assert not window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_false()
         window._search_input.setText("query")
-        assert window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_true()
 
     def test_hide_popups_hides_donate(self, window: MainWindow):
         window._toggle_donate()
         window._hide_popups()
-        assert window._donate_popup.isHidden()
+        assert_that(window._donate_popup.isHidden()).is_true()
 
     def test_set_height_restores_position(self, window: MainWindow):
         original_pos = QPoint(100, 200)
@@ -943,60 +944,60 @@ class TestDonatePopup:
 
         with patch.object(MainWindow, "setFixedHeight", shifting_set_fixed):
             window._set_height_preserving_pos(300)
-        assert window.pos() == original_pos
+        assert_that(window.pos()).is_equal_to(original_pos)
 
     def test_sync_height_with_donate(self, window: MainWindow):
         window._toggle_donate()
         donate_height = window._donate_popup.sizeHint().height()
         expected = window._search_height + 1 + donate_height + window._RADIUS + window._MARGIN * 2
-        assert window._height_target == expected
+        assert_that(window._height_target).is_equal_to(expected)
         window._finalize_height()
-        assert window.height() == expected
+        assert_that(window.height()).is_equal_to(expected)
 
 
 class TestSystemTray:
     def test_tray_exists(self, window: MainWindow):
-        assert isinstance(window._tray, QSystemTrayIcon)
+        assert_that(window._tray).is_instance_of(QSystemTrayIcon)
 
     def test_tray_context_menu_actions(self, window: MainWindow):
         menu = window._tray.contextMenu()
         actions = menu.actions()
-        assert len(actions) == 2
-        assert actions[0].text() == "Show / Hide"
-        assert actions[1].text() == "Quit"
+        assert_that(actions).is_length(2)
+        assert_that(actions[0].text()).is_equal_to("Show / Hide")
+        assert_that(actions[1].text()).is_equal_to("Quit")
 
     def test_close_hides_to_tray(self, window: MainWindow):
         window.show()
         window.close()
-        assert not window.isVisible()
-        assert window._tray.isVisible()
+        assert_that(window.isVisible()).is_false()
+        assert_that(window._tray.isVisible()).is_true()
 
     def test_close_saves_position(self, window: MainWindow):
         window.show()
         window.move(100, 200)
         window.close()
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert settings.value("window_x") is not None
+        assert_that(settings.value("window_x")).is_not_none()
 
     def test_tray_double_click_shows(self, window: MainWindow):
         window.hide()
         window._on_tray_activated(QSystemTrayIcon.ActivationReason.DoubleClick)
-        assert window.isVisible()
+        assert_that(window.isVisible()).is_true()
 
     def test_tray_double_click_hides(self, window: MainWindow):
         window.show()
         window._on_tray_activated(QSystemTrayIcon.ActivationReason.DoubleClick)
-        assert not window.isVisible()
+        assert_that(window.isVisible()).is_false()
 
     def test_tray_single_click_ignored(self, window: MainWindow):
         window.show()
         window._on_tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
-        assert window.isVisible()
+        assert_that(window.isVisible()).is_true()
 
     def test_tray_icon_updates_on_theme(self, window: MainWindow):
         old_key = window._tray.icon().cacheKey()
         window._set_theme(LIGHT_THEME)
-        assert window._tray.icon().cacheKey() != old_key
+        assert_that(window._tray.icon().cacheKey()).is_not_equal_to(old_key)
 
     def test_quit_from_tray(self, window: MainWindow):
         with patch.object(seekbar.app.QApplication, "quit") as mock_quit:
@@ -1006,25 +1007,25 @@ class TestSystemTray:
     def test_quit_hides_tray(self, window: MainWindow):
         with patch.object(seekbar.app.QApplication, "quit"):
             window._quit_app()
-        assert not window._tray.isVisible()
+        assert_that(window._tray.isVisible()).is_false()
 
 
 class TestToggleVisibility:
     def test_show_from_hidden(self, window: MainWindow):
         window.hide()
         window._toggle_visibility()
-        assert window.isVisible()
+        assert_that(window.isVisible()).is_true()
 
     def test_hide_from_visible(self, window: MainWindow):
         window.show()
         window._toggle_visibility()
-        assert not window.isVisible()
+        assert_that(window.isVisible()).is_false()
 
     def test_show_selects_all_text(self, window: MainWindow):
         window.hide()
         window._search_input.setText("query")
         window._toggle_visibility()
-        assert window._search_input.selectedText() == "query"
+        assert_that(window._search_input.selectedText()).is_equal_to("query")
 
 
 class TestAltDrag:
@@ -1037,8 +1038,8 @@ class TestAltDrag:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.AltModifier,
         )
-        assert window.eventFilter(window._search_input, event) is True
-        assert window._drag_pos is not None
+        assert_that(window.eventFilter(window._search_input, event)).is_true()
+        assert_that(window._drag_pos).is_not_none()
 
     def test_non_alt_click_passes_through(self, window: MainWindow):
         event = QMouseEvent(
@@ -1049,7 +1050,7 @@ class TestAltDrag:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        assert window.eventFilter(window._search_input, event) is False
+        assert_that(window.eventFilter(window._search_input, event)).is_false()
 
     def test_alt_click_on_other_widget_passes_through(self, window: MainWindow):
         event = QMouseEvent(
@@ -1060,7 +1061,7 @@ class TestAltDrag:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.AltModifier,
         )
-        assert window.eventFilter(window._status_label, event) is False
+        assert_that(window.eventFilter(window._status_label, event)).is_false()
 
     def test_mouse_move_during_drag(self, window: MainWindow):
         window._drag_pos = QPoint(10, 10)
@@ -1072,7 +1073,7 @@ class TestAltDrag:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.AltModifier,
         )
-        assert window.eventFilter(window._search_input, move_event) is True
+        assert_that(window.eventFilter(window._search_input, move_event)).is_true()
 
     def test_mouse_release_ends_drag(self, window: MainWindow):
         window._drag_pos = QPoint(10, 10)
@@ -1084,13 +1085,13 @@ class TestAltDrag:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        assert window.eventFilter(window._search_input, release_event) is True
-        assert window._drag_pos is None
+        assert_that(window.eventFilter(window._search_input, release_event)).is_true()
+        assert_that(window._drag_pos).is_none()
 
 
 class TestGlobalHotkey:
     def test_hotkey_not_registered_by_default(self, window: MainWindow):
-        assert window._hotkey_registered is False
+        assert_that(window._hotkey_registered).is_false()
 
     def test_hotkey_registers_on_init(self, qtbot: QtBot):
         with patch("seekbar.app._hotkey") as mock_hk:
@@ -1098,12 +1099,12 @@ class TestGlobalHotkey:
             mock_hk.WM_HOTKEY = 0x0312
             main_window = MainWindow()
         qtbot.addWidget(main_window)
-        assert main_window._hotkey_registered is True
-        assert main_window._hotkey_filter is not None
+        assert_that(main_window._hotkey_registered).is_true()
+        assert_that(main_window._hotkey_filter).is_not_none()
         main_window._tray.hide()
 
     def test_no_filter_on_registration_failure(self, window: MainWindow):
-        assert window._hotkey_filter is None
+        assert_that(window._hotkey_filter).is_none()
 
     def test_filter_triggers_toggle(self, window: MainWindow):
         window.show()
@@ -1113,7 +1114,7 @@ class TestGlobalHotkey:
         msg = ctypes.wintypes.MSG()
         msg.message = 0x0312
         result = hotkey_filter.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
-        assert result == (True, 0)
+        assert_that(result).is_equal_to((True, 0))
         callback.assert_called_once()
 
     def test_filter_ignores_other_messages(self):
@@ -1123,7 +1124,7 @@ class TestGlobalHotkey:
         msg = ctypes.wintypes.MSG()
         msg.message = 0x0001
         result = hotkey_filter.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
-        assert result == (False, 0)
+        assert_that(result).is_equal_to((False, 0))
         callback.assert_not_called()
 
     def test_filter_ignores_non_windows_events(self):
@@ -1131,7 +1132,7 @@ class TestGlobalHotkey:
         # noinspection PyProtectedMember
         hotkey_filter = seekbar.app._HotkeyFilter(callback)
         result = hotkey_filter.nativeEventFilter(b"xcb_generic_event_t", 0)
-        assert result == (False, 0)
+        assert_that(result).is_equal_to((False, 0))
         callback.assert_not_called()
 
     def test_quit_unregisters_hotkey(self, qtbot: QtBot):
@@ -1148,4 +1149,4 @@ class TestGlobalHotkey:
     def test_hotkey_skipped_when_no_module(self, window: MainWindow):
         with patch("seekbar.app._hotkey", None):
             window._init_hotkey()
-        assert window._hotkey_registered is False
+        assert_that(window._hotkey_registered).is_false()

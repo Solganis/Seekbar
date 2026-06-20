@@ -1,6 +1,7 @@
 import sys
 
 import pytest
+from assertpy2 import assert_that
 
 if sys.platform != "win32":
     pytest.skip("Windows-only tests", allow_module_level=True)
@@ -21,27 +22,27 @@ from seekbar.hotkey import (
 
 class TestConstants:
     def test_wm_hotkey(self):
-        assert WM_HOTKEY == 0x0312
+        assert_that(WM_HOTKEY).is_equal_to(0x0312)
 
     def test_modifiers(self):
-        assert MOD_ALT == 0x0001
-        assert MOD_CONTROL == 0x0002
+        assert_that(MOD_ALT).is_equal_to(0x0001)
+        assert_that(MOD_CONTROL).is_equal_to(0x0002)
 
     def test_vk_s(self):
-        assert VK_S == 0x53
+        assert_that(VK_S).is_equal_to(0x53)
 
     def test_hotkey_id(self):
-        assert _HOTKEY_ID == 1
+        assert_that(_HOTKEY_ID).is_equal_to(1)
 
 
 class TestRegisterHotkey:
     def test_success(self):
         with patch("seekbar.hotkey.user32.RegisterHotKey", return_value=1):
-            assert register_hotkey() is True
+            assert_that(register_hotkey()).is_true()
 
     def test_failure(self):
         with patch("seekbar.hotkey.user32.RegisterHotKey", return_value=0):
-            assert register_hotkey() is False
+            assert_that(register_hotkey()).is_false()
 
     def test_calls_with_correct_args(self):
         mock_register = MagicMock(return_value=1)
@@ -53,11 +54,11 @@ class TestRegisterHotkey:
 class TestUnregisterHotkey:
     def test_success(self):
         with patch("seekbar.hotkey.user32.UnregisterHotKey", return_value=1):
-            assert unregister_hotkey() is True
+            assert_that(unregister_hotkey()).is_true()
 
     def test_failure(self):
         with patch("seekbar.hotkey.user32.UnregisterHotKey", return_value=0):
-            assert unregister_hotkey() is False
+            assert_that(unregister_hotkey()).is_false()
 
     def test_calls_with_correct_args(self):
         mock_unregister = MagicMock(return_value=1)
