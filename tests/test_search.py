@@ -154,9 +154,11 @@ class TestDiscoverRoots:
 
     def test_unknown_platform_returns_root(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "UnknownOS")
-        with pytest.warns(UserWarning, match="Unsupported platform"):
-            roots = discover_roots()
-        assert_that(roots).is_equal_to([Path("/")])
+        captured: list[list[Path]] = []
+        assert_that(lambda: captured.append(discover_roots())).warns(UserWarning).when_called_with().satisfies(
+            lambda message: "Unsupported platform" in message
+        )
+        assert_that(captured[0]).is_equal_to([Path("/")])
 
     def test_darwin_without_volumes(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
