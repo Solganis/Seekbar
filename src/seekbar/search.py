@@ -2,7 +2,9 @@ import os
 import platform
 import string
 import sys
+import threading
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -283,17 +285,28 @@ class SearchWorker(QThread):
         self._normalized_query = _normalize(query.lower())
         self._tokens = self._normalized_query.split()
         self._count = 0
+        self._emitted = 0
         self._buffer: list[tuple[str, int, int, bool]] = []
+        self._lock = threading.Lock()
 
     def _buffer_result(self, path: str, score: int, depth: int, is_dir: bool) -> None:  # noqa: FBT001 - matches strategy callback signature
-        self._buffer.append((path, score, depth, is_dir))
-        if len(self._buffer) >= _BATCH_SIZE:
-            self._flush_buffer()
+        with self._lock:
+            if self._emitted >= MAX_RESULTS:
+                return
+            self._buffer.append((path, score, depth, is_dir))
+            self._emitted += 1
+            if len(self._buffer) >= _BATCH_SIZE:
+                self.batch_found.emit(self._buffer.copy())
+                self._buffer.clear()
 
     def _flush_buffer(self) -> None:
-        if self._buffer:
-            self.batch_found.emit(self._buffer.copy())
-            self._buffer.clear()
+        with self._lock:
+            if self._buffer:
+                self.batch_found.emit(self._buffer.copy())
+                self._buffer.clear()
+
+    def _stop_requested(self) -> bool:
+        return self.isInterruptionRequested() or self._emitted >= MAX_RESULTS
 
     def run(self) -> None:
         roots = discover_roots()
@@ -309,30 +322,37 @@ class SearchWorker(QThread):
         self._flush_buffer()
         self.finished.emit(self._count)
 
+    def _search_roots_parallel(self, roots: list[Path], search_one: Callable[[Path], int]) -> None:
+        if len(roots) == 1:
+            self._count += search_one(roots[0])
+            return
+        with ThreadPoolExecutor(max_workers=len(roots)) as executor:
+            for found in executor.map(search_one, roots):
+                self._count += found
+
     def _run_with_mft_fallback(self, roots: list[Path]) -> None:
+        self._search_roots_parallel(roots, self._search_root_mft)
+
+    def _search_root_mft(self, root: Path) -> int:
         from seekbar._mft import is_ntfs  # noqa: PLC0415 - conditional, _mft is Windows-only
 
-        for root in roots:
-            if self.isInterruptionRequested() or self._count >= MAX_RESULTS:
-                return
-            drive = str(root).rstrip("\\")
-            if is_ntfs(drive):
-                try:
-                    self._count += MftSearchStrategy(drive).execute(
-                        self._normalized_query,
-                        self._tokens,
-                        self._buffer_result,
-                        self.isInterruptionRequested,
-                    )
-                    continue
-                except OSError:
-                    pass
-            self._count += WalkSearchStrategy([root]).execute(
-                self._normalized_query,
-                self._tokens,
-                self._buffer_result,
-                self.isInterruptionRequested,
-            )
+        drive = str(root).rstrip("\\")
+        if is_ntfs(drive):
+            try:
+                return MftSearchStrategy(drive).execute(
+                    self._normalized_query,
+                    self._tokens,
+                    self._buffer_result,
+                    self._stop_requested,
+                )
+            except OSError:
+                pass
+        return WalkSearchStrategy([root]).execute(
+            self._normalized_query,
+            self._tokens,
+            self._buffer_result,
+            self._stop_requested,
+        )
 
     def _run_with_spotlight_fallback(self, roots: list[Path]) -> None:
         import shutil  # noqa: PLC0415 - conditional platform import
@@ -346,7 +366,7 @@ class SearchWorker(QThread):
                     self._normalized_query,
                     self._tokens,
                     self._buffer_result,
-                    self.isInterruptionRequested,
+                    self._stop_requested,
                 )
             except OSError:
                 pass
@@ -367,7 +387,7 @@ class SearchWorker(QThread):
                     self._normalized_query,
                     self._tokens,
                     self._buffer_result,
-                    self.isInterruptionRequested,
+                    self._stop_requested,
                 )
             except OSError:
                 pass
@@ -376,11 +396,14 @@ class SearchWorker(QThread):
         self._run_walk(roots)
 
     def _run_walk(self, roots: list[Path]) -> None:
-        self._count += WalkSearchStrategy(roots).execute(
+        self._search_roots_parallel(roots, self._walk_root)
+
+    def _walk_root(self, root: Path) -> int:
+        return WalkSearchStrategy([root]).execute(
             self._normalized_query,
             self._tokens,
             self._buffer_result,
-            self.isInterruptionRequested,
+            self._stop_requested,
         )
 
     def stop(self) -> None:

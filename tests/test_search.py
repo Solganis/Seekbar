@@ -429,6 +429,24 @@ class TestSearchWorker:
         assert_that(results).contains("world_hello.txt")
         assert_that(scores["world_hello.txt"]).is_equal_to(5)
 
+    def test_searches_multiple_roots_in_parallel(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        root1 = tmp_path / "root1"
+        root1.mkdir()
+        (root1 / "hosts_a").touch()
+        root2 = tmp_path / "root2"
+        root2.mkdir()
+        (root2 / "hosts_b").touch()
+        monkeypatch.setattr(seekbar.search, "discover_roots", lambda: [root1, root2])
+
+        worker = SearchWorker("hosts")
+        results: list[str] = []
+        worker.batch_found.connect(lambda batch: results.extend(Path(p).name for p, _s, _d, _id in batch))
+
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.start()
+
+        assert_that(sorted(results)).is_equal_to(["hosts_a", "hosts_b"])
+
 
 class TestSkipDirs:
     def test_skips_excluded_dirs(self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -1059,3 +1077,16 @@ class TestBatchBuffer:
 
         assert_that(batches).is_length(1)
         assert_that(batches[0]).is_length(3)
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_buffer_drops_results_past_max(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 2)
+        worker = SearchWorker("hosts")
+        emitted: list[tuple[str, int, int, bool]] = []
+        worker.batch_found.connect(lambda batch: emitted.extend(batch))
+        worker._buffer_result("C:/a", 0, 0, False)
+        worker._buffer_result("C:/b", 0, 0, False)
+        worker._buffer_result("C:/c", 0, 0, False)
+        worker._flush_buffer()
+        assert_that(worker._emitted).is_equal_to(2)
+        assert_that(emitted).is_length(2)
