@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 from assertpy2 import assert_that
+from hypothesis import assume, given
+from hypothesis import strategies as st
 
 import seekbar.search
 from seekbar.search import (
@@ -30,6 +32,12 @@ _score = seekbar.search._score
 _matches = seekbar.search._matches
 # noinspection PyProtectedMember
 _normalize = seekbar.search._normalize
+# noinspection PyProtectedMember
+_score_from_normalized = seekbar.search._score_from_normalized
+# noinspection PyProtectedMember
+_matches_normalized = seekbar.search._matches_normalized
+# noinspection PyProtectedMember
+_SEPARATORS = seekbar.search._SEPARATORS
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -154,11 +162,7 @@ class TestDiscoverRoots:
 
     def test_unknown_platform_returns_root(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "UnknownOS")
-        captured: list[list[Path]] = []
-        assert_that(lambda: captured.append(discover_roots())).warns(UserWarning).when_called_with().satisfies(
-            lambda message: "Unsupported platform" in message
-        )
-        assert_that(captured[0]).is_equal_to([Path("/")])
+        assert_that(discover_roots).warns(UserWarning).when_called_with().returned().is_equal_to([Path("/")])
 
     def test_darwin_without_volumes(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
@@ -1092,3 +1096,52 @@ class TestBatchBuffer:
         worker._flush_buffer()
         assert_that(worker._emitted).is_equal_to(2)
         assert_that(emitted).is_length(2)
+
+
+class TestNormalizeProperties:
+    @given(st.text())
+    def test_equals_naive_translate(self, text: str):
+        # The fast-path optimization must never change the result vs always translating.
+        assert_that(_normalize(text)).is_equal_to(text.translate(_SEPARATORS))
+
+    @given(st.text())
+    def test_output_has_no_separators(self, text: str):
+        result = _normalize(text)
+        assert_that("_" not in result and "-" not in result).is_true()
+
+    @given(st.text())
+    def test_preserves_length(self, text: str):
+        assert_that(_normalize(text)).is_length(len(text))
+
+    @given(st.text())
+    def test_is_idempotent(self, text: str):
+        once = _normalize(text)
+        assert_that(_normalize(once)).is_equal_to(once)
+
+
+class TestScoreProperties:
+    @given(st.text(), st.text())
+    def test_score_is_in_range(self, query: str, name: str):
+        assert_that(_score(query, name)).is_between(0, 5)
+
+    @given(st.text())
+    def test_exact_match_scores_zero(self, name: str):
+        normalized = _normalize(name.lower())
+        assert_that(_score(normalized, name)).is_equal_to(0)
+
+    @given(st.text(), st.text())
+    def test_non_substring_scores_five(self, query: str, name: str):
+        normalized_query = _normalize(query.lower())
+        assume(normalized_query not in _normalize(name.lower()))
+        assert_that(_score(normalized_query, name)).is_equal_to(5)
+
+
+class TestMatchesProperties:
+    @given(st.text(min_size=1))
+    def test_string_matches_itself(self, name: str):
+        assert_that(_matches_normalized(name, name, name.split())).is_true()
+
+    @given(st.text(), st.text(min_size=1), st.text())
+    def test_substring_query_matches(self, prefix: str, query: str, suffix: str):
+        name = prefix + query + suffix
+        assert_that(_matches_normalized(name, query, query.split())).is_true()

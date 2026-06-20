@@ -11,7 +11,7 @@ class TestImportGuard:
         monkeypatch.setattr(sys, "platform", "win32")
         assert_that(lambda: importlib.reload(importlib.import_module("seekbar._locate"))).raises(
             ImportError
-        ).when_called_with().satisfies(lambda message: "Linux" in message)
+        ).when_called_with().matches("Linux")
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux-only")

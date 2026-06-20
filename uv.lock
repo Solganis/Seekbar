@@ -13,11 +13,11 @@ wheels = [
 
 [[package]]
 name = "assertpy2"
-version = "2.6.0"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ad/b1/9d4466711f870875e3d3ccb0a69c74754d2576124dba2519bf3b6ebe9752/assertpy2-2.6.0.tar.gz", hash = "sha256:9d630272a3a163420147db7c9a95996ebbd57988fb2db1f07f8a935d954c856a", size = 209933, upload-time = "2026-06-20T18:26:01.51Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/64/66039a19bd37295d4970776dc87688f0e8ba1ba29989507c5b9dc004c8a1/assertpy2-2.7.0.tar.gz", hash = "sha256:a271440a43a5c48457f90a997b91febcd7a0b41a4f437e3173fa4eb020d336e8", size = 214513, upload-time = "2026-06-20T19:53:04.565Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/fe/5e3b115fe797343217a920ea39699f3c48762681ce9f26876138657da48d/assertpy2-2.6.0-py3-none-any.whl", hash = "sha256:f4fba62a356a08bb5b47083e6ad294778434a90ebc9c6d91730aaa747d9d9f70", size = 64480, upload-time = "2026-06-20T18:25:59.955Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/32/784d0abb371c7c52a70bcc110dd1c5287500c8bc2702203821701a7cf70d/assertpy2-2.7.0-py3-none-any.whl", hash = "sha256:80d7b152390c40e0ae2a8f25200c458b4d15a0f02fe23a2d5e5c354a76090ff5", size = 65130, upload-time = "2026-06-20T19:53:03.208Z" },
 ]
 
 [[package]]
@@ -66,6 +66,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/35/cb/0765dbd9011d2e47315f1da31e62c5fe231f04a6ec8da213e64c4505896d/coverage-7.14.2-cp314-cp314t-win_amd64.whl", hash = "sha256:60fb0ca084a92da96474b8b405a7ea76dfecac3c68db54383e7934b6f3871169", size = 223934, upload-time = "2026-06-20T14:49:25.347Z" },
     { url = "https://files.pythonhosted.org/packages/4e/ce/373dde027ecd0ae54511430fe7569f838d3a0376b70333ba9fd20c76b836/coverage-7.14.2-cp314-cp314t-win_arm64.whl", hash = "sha256:36a0a3f42ed7dfdbca2a69a541519ffd5064a5692152fc0018109e74370d7345", size = 223249, upload-time = "2026-06-20T14:49:27.241Z" },
     { url = "https://files.pythonhosted.org/packages/a3/5e/a8ba14ceb014f39bd5e3f7077150718c7de61c01ce326bfe7e8eae9b19b2/coverage-7.14.2-py3-none-any.whl", hash = "sha256:04d92589e481a8b68a005a5a1e0646a91c76f322c397c4635298c57cf63699b5", size = 212325, upload-time = "2026-06-20T14:49:28.991Z" },
+]
+
+[[package]]
+name = "hypothesis"
+version = "6.155.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/10/aa/9a91a4addf285702a98713da44b3581799539426436617bfb8914478c166/hypothesis-6.155.6.tar.gz", hash = "sha256:7569e1897690336c85d49d8391b49ec6ab83d951009515bfc29faebbac286cf5", size = 478038, upload-time = "2026-06-19T13:21:23.379Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/a9/4c17e962c2e9cbc314bb579ed2e2b2da45d7b6b942aab6948d14d85abfea/hypothesis-6.155.6-py3-none-any.whl", hash = "sha256:a96d9a29f6bbc8ccac39dd84e140892da76765464929f401a4181b90c20c9ad1", size = 544521, upload-time = "2026-06-19T13:21:20.934Z" },
 ]
 
 [[package]]
@@ -302,6 +314,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "assertpy2" },
+    { name = "hypothesis" },
     { name = "pyinstaller" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -315,7 +328,8 @@ requires-dist = [{ name = "pyside6", specifier = ">=6.11.1" }]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "assertpy2", specifier = ">=2.6.0" },
+    { name = "assertpy2", specifier = ">=2.7.0" },
+    { name = "hypothesis", specifier = ">=6.155.6" },
     { name = "pyinstaller", specifier = ">=6.21.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
@@ -343,6 +357,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/57/d5/dd4f1defed400be03340f2ede34b61f846776650b4e7ed9ebaf4c71979a2/shiboken6-6.11.1-cp310-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:1bd2f4314414df2d122d9f646e03b731bc6d6b5f77a5f53f99a4fe4e97d84e6f", size = 270350, upload-time = "2026-05-13T09:47:04.02Z" },
     { url = "https://files.pythonhosted.org/packages/52/b5/3f6fb2ee65b534193fb4ef713dd619dc31dadff5d12c16979a7699ad58be/shiboken6-6.11.1-cp310-abi3-win_amd64.whl", hash = "sha256:c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7", size = 1223647, upload-time = "2026-05-13T09:47:05.924Z" },
     { url = "https://files.pythonhosted.org/packages/98/d1/f15ca0e1666faae02c945f48e745ea35f8fcd8243b176109b4e2c4251f47/shiboken6-6.11.1-cp310-abi3-win_arm64.whl", hash = "sha256:7c8d9af17db4495d4fa5b1c393f218311c4855546b9dfa6a0bd21bcd66b55e9d", size = 1784170, upload-time = "2026-05-13T09:47:07.617Z" },
+]
+
+[[package]]
+name = "sortedcontainers"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
 ]
 
 [[package]]
