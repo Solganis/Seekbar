@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 
 class SpotlightSearchStrategy:
+    # instance method to match the SearchStrategy.execute interface (Walk/Mft strategies)
     # noinspection PyMethodMayBeStatic
     def execute(
         self,

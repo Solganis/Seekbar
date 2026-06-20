@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from assertpy2 import assert_that
-from hypothesis import given, settings
+from hypothesis import given, settings as hypothesis_settings
 from hypothesis import strategies as st
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, Qt
 from PySide6.QtGui import QMouseEvent
@@ -1166,7 +1166,7 @@ class TestGlobalHotkey:
 
 class TestResultModel:
     @pytest.fixture
-    def model(self, qtbot: QtBot) -> _ResultModel:  # noqa: ARG002 - qtbot ensures a QApplication exists
+    def model(self) -> _ResultModel:
         instance = _ResultModel(_RecencyStore())
         instance.add_batch([("C:/dir/file.txt", 0, 0, False)])
         return instance
@@ -1183,7 +1183,7 @@ class TestResultModel:
     def test_row_count_with_valid_parent_is_zero(self, model: _ResultModel):
         assert_that(model.rowCount(model.index(0))).is_equal_to(0)
 
-    def test_recency_breaks_score_tie(self, qtbot: QtBot):  # noqa: ARG002 - qtbot ensures a QApplication exists
+    def test_recency_breaks_score_tie(self):
         recency = _RecencyStore()
         recency.record("C:/dir/b.txt")
         model = _ResultModel(recency)
@@ -1246,7 +1246,7 @@ class TestRecencyStore:
 
 
 class TestRecencyStoreProperties:
-    @settings(deadline=None, max_examples=50)
+    @hypothesis_settings(deadline=None, max_examples=50)
     @given(st.lists(st.text(max_size=8), min_size=1, max_size=15))
     def test_last_recorded_is_rank_zero(self, paths: list[str]):
         QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
@@ -1255,7 +1255,7 @@ class TestRecencyStoreProperties:
             store.record(path)
         assert_that(store.rank(paths[-1])).is_equal_to(0)
 
-    @settings(deadline=None, max_examples=50)
+    @hypothesis_settings(deadline=None, max_examples=50)
     @given(st.lists(st.text(max_size=8), max_size=15))
     def test_ranks_stay_bounded(self, paths: list[str]):
         QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
@@ -1265,7 +1265,7 @@ class TestRecencyStoreProperties:
         for path in paths:
             assert_that(store.rank(path)).is_between(0, _RecencyStore._LIMIT)
 
-    @settings(deadline=None, max_examples=50)
+    @hypothesis_settings(deadline=None, max_examples=50)
     @given(st.lists(st.text(max_size=8), max_size=15))
     def test_no_duplicate_paths(self, paths: list[str]):
         QSettings(SETTINGS_ORG, SETTINGS_APP).clear()
@@ -1308,9 +1308,9 @@ _RESULTS = st.lists(
 
 
 class TestResultModelProperties:
-    @settings(max_examples=50)
+    @hypothesis_settings(max_examples=50)
     @given(_RESULTS)
-    def test_keys_stay_sorted(self, qapp, results):  # noqa: ARG002 - qapp ensures a QApplication exists
+    def test_keys_stay_sorted(self, results):
         model = _ResultModel(_RecencyStore())
         model.add_batch(results)
         assert_that(model._keys).is_equal_to(sorted(model._keys))

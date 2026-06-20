@@ -58,6 +58,7 @@ class MftRecord(NamedTuple):
     is_dir: bool
 
 
+# kernel32.* are dynamic WinDLL attributes PyCharm can't resolve statically
 # noinspection PyUnresolvedReferences
 def is_ntfs(drive_letter: str) -> bool:
     filesystem_name = ctypes.create_unicode_buffer(256)
@@ -76,6 +77,7 @@ def is_ntfs(drive_letter: str) -> bool:
     return filesystem_name.value == "NTFS"
 
 
+# kernel32.* are dynamic WinDLL attributes PyCharm can't resolve statically
 # noinspection PyUnresolvedReferences
 def enumerate_mft(drive_letter: str) -> tuple[dict[int, tuple[int, str, bool]], int]:
     volume_path = f"\\\\.\\{drive_letter.rstrip(chr(92))}"
@@ -99,6 +101,7 @@ def enumerate_mft(drive_letter: str) -> tuple[dict[int, tuple[int, str, bool]], 
         kernel32.CloseHandle(handle)
 
 
+# kernel32.* are dynamic WinDLL attributes PyCharm can't resolve statically
 # noinspection PyUnresolvedReferences
 def _stream_mft_batches(handle: int) -> Iterator[list[MftRecord]]:
     enum_data = _MftEnumDataV0()
@@ -151,6 +154,7 @@ def _read_mft(handle: int) -> tuple[dict[int, tuple[int, str, bool]], int]:
     return records, _MFT_ROOT_REF
 
 
+# kernel32.* are dynamic WinDLL attributes PyCharm can't resolve statically
 # noinspection PyUnresolvedReferences
 def stream_mft(drive_letter: str) -> Iterator[list[MftRecord]]:
     volume_path = f"\\\\.\\{drive_letter.rstrip(chr(92))}"
