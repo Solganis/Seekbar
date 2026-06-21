@@ -357,6 +357,8 @@ class SearchWorker(QThread):
     def _run_with_spotlight_fallback(self, roots: list[Path]) -> None:
         import shutil  # noqa: PLC0415 - conditional platform import
 
+        # str arg hits the non-deprecated which(str) overload; the PathLike/Windows<3.12 note is moot here
+        # noinspection PyDeprecation
         if shutil.which("mdfind"):
             from seekbar._spotlight import SpotlightSearchStrategy  # noqa: PLC0415 - conditional platform import
 
@@ -376,6 +378,8 @@ class SearchWorker(QThread):
     def _run_with_locate_fallback(self, roots: list[Path]) -> None:
         import shutil  # noqa: PLC0415 - conditional platform import
 
+        # str args hit the non-deprecated which(str) overload; the PathLike/Windows<3.12 note is moot here
+        # noinspection PyDeprecation
         command = shutil.which("plocate") or shutil.which("locate")
         if command:
             from seekbar._locate import LocateSearchStrategy  # noqa: PLC0415 - conditional platform import

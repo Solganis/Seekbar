@@ -32,7 +32,7 @@ class TestSubprocessSearch:
     def test_finds_matching_files(self):
         lines = [f"/home/user/hosts.txt{os.linesep}", f"/home/user/readme.md{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             count = subprocess_search(
@@ -49,7 +49,7 @@ class TestSubprocessSearch:
     def test_scores_results(self):
         lines = [f"/home/hosts{os.linesep}", f"/home/hosts.txt{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -60,7 +60,7 @@ class TestSubprocessSearch:
     def test_detects_directories(self):
         lines = [f"/home/hosts_dir{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=True):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -71,7 +71,7 @@ class TestSubprocessSearch:
         path = str(Path("/", "home", "user", "docs", "hosts.txt"))
         lines = [f"{path}{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -84,7 +84,7 @@ class TestSubprocessSearch:
             f"/home/user/hosts.txt{os.linesep}",
         ]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -102,7 +102,7 @@ class TestSubprocessSearch:
             call_count += 1
             return call_count > 1
 
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             count = subprocess_search(
@@ -119,7 +119,7 @@ class TestSubprocessSearch:
     def test_max_results_stops_search(self):
         lines = [f"/home/hosts_{i}.txt{os.linesep}" for i in range(MAX_RESULTS + 10)]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             count = subprocess_search(
@@ -134,7 +134,7 @@ class TestSubprocessSearch:
 
     def test_empty_output(self):
         process = _FakeProcess([])
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process):
             count = subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -145,7 +145,7 @@ class TestSubprocessSearch:
     def test_skips_empty_lines(self):
         lines = [os.linesep, f"/home/hosts.txt{os.linesep}", os.linesep]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             count = subprocess_search(
@@ -161,7 +161,7 @@ class TestSubprocessSearch:
     def test_non_matching_files_filtered(self):
         lines = [f"/home/readme.md{os.linesep}", f"/home/changelog.txt{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process):
             count = subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
@@ -200,7 +200,7 @@ class TestSubprocessSearch:
     def test_normalized_matching(self):
         lines = [f"/home/my_hosts_file.txt{os.linesep}"]
         process = _FakeProcess(lines)
-        results: list[tuple] = []
+        results: list[tuple[str, int, int, bool]] = []
 
         with patch(_POPEN, return_value=process), patch.object(Path, "is_dir", return_value=False):
             count = subprocess_search(
