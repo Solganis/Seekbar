@@ -87,6 +87,8 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QStyleOptionViewItem
 
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
+_NAME_ROLE = Qt.ItemDataRole.UserRole + 2
+_PARENT_ROLE = Qt.ItemDataRole.UserRole + 3
 _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("↑", "↓"), "Navigate"),
     (("PgUp", "PgDn"), "Jump page"),
@@ -209,10 +211,9 @@ class _ResultDelegate(QStyledItemDelegate):
         option: QStyleOptionViewItem,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        path_str = index.data(Qt.ItemDataRole.UserRole)
-        if not path_str:
+        display_name = index.data(_NAME_ROLE)
+        if not display_name:
             return
-        file_path = Path(path_str)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -236,13 +237,13 @@ class _ResultDelegate(QStyledItemDelegate):
         painter.setFont(self._name_font)
         painter.setPen(QColor(self._theme.on_surface))
         name_rect = QRect(left, option.rect.top() + pad, width, name_h + pad)
-        elided = self._name_metrics.elidedText(file_path.name, Qt.TextElideMode.ElideRight, width)
+        elided = self._name_metrics.elidedText(display_name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
         painter.setFont(self._path_font)
         painter.setPen(QColor(self._theme.on_surface_variant))
         path_rect = QRect(left, option.rect.top() + pad + name_h + pad, width, path_h + pad)
-        parent_name = file_path.parent.name or str(file_path.parent)
+        parent_name = index.data(_PARENT_ROLE)
         elided = self._path_metrics.elidedText(parent_name, Qt.TextElideMode.ElideRight, width)
         painter.drawText(path_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
 
@@ -303,7 +304,7 @@ class _ResultModel(QAbstractListModel):
         super().__init__(parent)
         self._recency = recency
         self._keys: list[tuple[int, int, int, int]] = []
-        self._rows: list[tuple[str, bool]] = []
+        self._rows: list[tuple[str, bool, str, str]] = []
 
     @override
     def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _NO_PARENT) -> int:
@@ -313,21 +314,53 @@ class _ResultModel(QAbstractListModel):
     def data(self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
         if not index.isValid():
             return None
+        row = self._rows[index.row()]
         if role == Qt.ItemDataRole.UserRole:
-            return self._rows[index.row()][0]
+            return row[0]
         if role == _IS_DIR_ROLE:
-            return self._rows[index.row()][1]
+            return row[1]
+        if role == _NAME_ROLE:
+            return row[2]
+        if role == _PARENT_ROLE:
+            return row[3]
         return None
 
     def add_batch(self, results: list[tuple[str, int, int, bool]]) -> None:
+        if not results:
+            return
+        # Build (key, row) once per result; name/parent are precomputed here so paint never parses
+        # a Path. Recency breaks ties within a score tier; basename length is the final tiebreaker.
+        items: list[tuple[tuple[int, int, int, int], tuple[str, bool, str, str]]] = []
         for path, score, depth, is_dir in results:
-            # Recency breaks ties within a score tier; basename length is the final tiebreaker.
             key = (score, self._recency.rank(path), depth, _basename_length(path))
-            pos = bisect.bisect_right(self._keys, key)
-            self.beginInsertRows(_NO_PARENT, pos, pos)
-            self._keys.insert(pos, key)
-            self._rows.insert(pos, (path, is_dir))
+            file_path = Path(path)
+            items.append((key, (path, is_dir, file_path.name, file_path.parent.name or str(file_path.parent))))
+        items.sort(key=lambda item: item[0])
+
+        keys = self._keys
+        rows = self._rows
+        # Merge the sorted batch into the sorted model, splicing each maximal run of batch items
+        # that share one insertion point in a single beginInsertRows span. `lo` is a monotonically
+        # rising lower bound: every later batch key inserts at or after the previous run's tail.
+        lo = 0
+        index = 0
+        count = len(items)
+        while index < count:
+            pos = bisect.bisect_right(keys, items[index][0], lo)
+            run_start = index
+            if pos < len(keys):
+                limit = keys[pos]  # first existing key strictly greater than the batch key
+                index += 1
+                while index < count and items[index][0] < limit:
+                    index += 1
+            else:
+                index = count  # no existing tail: all remaining (sorted) batch items append here
+            run = items[run_start:index]
+            self.beginInsertRows(_NO_PARENT, pos, pos + len(run) - 1)
+            keys[pos:pos] = [item[0] for item in run]
+            rows[pos:pos] = [item[1] for item in run]
             self.endInsertRows()
+            lo = pos + len(run)
 
     def clear(self) -> None:
         self.beginResetModel()
@@ -775,22 +808,7 @@ class MainWindow(QWidget):
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-            QMenu {{
-                background-color: {theme.surface_variant};
-                color: {theme.on_surface};
-                border: 1px solid {theme.outline};
-                border-radius: 8px;
-                padding: 4px;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 9pt;
-            }}
-            QMenu::item {{
-                padding: 8px 16px;
-                border-radius: 4px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme.hover};
-            }}
+            {menu_qss}
             #helpPopup, #donatePopup {{
                 background-color: {theme.surface_variant};
                 color: {theme.on_surface};
