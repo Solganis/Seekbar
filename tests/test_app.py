@@ -22,6 +22,8 @@ from seekbar.app import (
     _basename_length,
     _FONT_FAMILY,
     _IS_DIR_ROLE,
+    _NAME_ROLE,
+    _PARENT_ROLE,
     _RecencyStore,
     _ResultModel,
     SETTINGS_APP,
@@ -1180,6 +1182,12 @@ class TestResultModel:
     def test_data_unknown_role_returns_none(self, model: _ResultModel):
         assert_that(model.data(model.index(0), Qt.ItemDataRole.DisplayRole)).is_none()
 
+    def test_data_name_role_returns_basename(self, model: _ResultModel):
+        assert_that(model.data(model.index(0), _NAME_ROLE)).is_equal_to("file.txt")
+
+    def test_data_parent_role_returns_parent_name(self, model: _ResultModel):
+        assert_that(model.data(model.index(0), _PARENT_ROLE)).is_equal_to("dir")
+
     def test_row_count_with_valid_parent_is_zero(self, model: _ResultModel):
         assert_that(model.rowCount(model.index(0))).is_equal_to(0)
 
@@ -1307,6 +1315,67 @@ _RESULTS = st.lists(
 )
 
 
+def _ordered_paths(model: _ResultModel) -> list[str]:
+    return [model.path_at(row) for row in range(model.rowCount())]
+
+
+def _record_insert_spans(model: _ResultModel) -> list[int]:
+    spans: list[int] = []
+    model.rowsInserted.connect(lambda _parent, first, last: spans.append(last - first + 1))
+    return spans
+
+
+class TestResultModelMerge:
+    def test_empty_model_batch_is_single_run(self):
+        model = _ResultModel(_RecencyStore())
+        spans = _record_insert_spans(model)
+        model.add_batch([("C:/d/a.txt", 0, 1, False), ("C:/d/b.txt", 2, 1, False), ("C:/d/c.txt", 4, 1, False)])
+        # An empty model has no existing rows to split the batch, so it inserts as one contiguous run.
+        assert_that(spans).is_equal_to([3])
+
+    def test_run_grouping_emits_fewer_runs_than_items(self):
+        model = _ResultModel(_RecencyStore())
+        model.add_batch([("C:/d/s0.txt", 0, 1, False), ("C:/d/s2.txt", 2, 1, False), ("C:/d/s4.txt", 4, 1, False)])
+        spans = _record_insert_spans(model)
+        # Two score-1 items land contiguously between the existing 0 and 2; the score-3 item is a
+        # separate run between 2 and 4. So three items merge as two runs, not three.
+        model.add_batch([("C:/d/x1.txt", 1, 1, False), ("C:/d/y1.txt", 1, 1, False), ("C:/d/z3.txt", 3, 1, False)])
+        assert_that(spans).is_equal_to([2, 1])
+        assert_that(_ordered_paths(model)).is_equal_to(
+            ["C:/d/s0.txt", "C:/d/x1.txt", "C:/d/y1.txt", "C:/d/s2.txt", "C:/d/z3.txt", "C:/d/s4.txt"],
+        )
+
+    def test_interleaved_items_emit_one_run_each(self):
+        model = _ResultModel(_RecencyStore())
+        model.add_batch([("C:/d/s0.txt", 0, 1, False), ("C:/d/s2.txt", 2, 1, False), ("C:/d/s4.txt", 4, 1, False)])
+        spans = _record_insert_spans(model)
+        # Each batch item falls into a distinct gap, so every item is its own run.
+        model.add_batch([("C:/d/a1.txt", 1, 1, False), ("C:/d/b3.txt", 3, 1, False)])
+        assert_that(spans).is_equal_to([1, 1])
+        assert_that(_ordered_paths(model)).is_equal_to(
+            ["C:/d/s0.txt", "C:/d/a1.txt", "C:/d/s2.txt", "C:/d/b3.txt", "C:/d/s4.txt"],
+        )
+
+    def test_row_count_matches_total_across_batches(self):
+        model = _ResultModel(_RecencyStore())
+        model.add_batch([("C:/d/a.txt", 0, 1, False), ("C:/d/b.txt", 3, 1, False)])
+        model.add_batch([("C:/d/c.txt", 1, 1, False)])
+        model.add_batch([("C:/d/d.txt", 5, 1, False), ("C:/d/e.txt", 2, 1, False), ("C:/d/f.txt", 4, 1, False)])
+        assert_that(model.rowCount()).is_equal_to(6)
+        assert_that(model._keys).is_equal_to(sorted(model._keys))
+
+    def test_scale_emits_one_run_per_batch(self):
+        model = _ResultModel(_RecencyStore())
+        spans = _record_insert_spans(model)
+        # 100 batches of 100 key-identical rows: each batch appends as a single run, so the old
+        # per-item signal storm (10_000 emissions) collapses to one emission per batch.
+        for batch_index in range(100):
+            model.add_batch([(f"C:/d/{batch_index:03d}{item:03d}.txt", 0, 1, False) for item in range(100)])
+        assert_that(model.rowCount()).is_equal_to(10_000)
+        assert_that(len(spans)).is_equal_to(100)
+        assert_that(model._keys).is_equal_to(sorted(model._keys))
+
+
 class TestResultModelProperties:
     @hypothesis_settings(max_examples=50)
     @given(_RESULTS)
@@ -1314,3 +1383,18 @@ class TestResultModelProperties:
         model = _ResultModel(_RecencyStore())
         model.add_batch(results)
         assert_that(model._keys).is_equal_to(sorted(model._keys))
+
+    @hypothesis_settings(max_examples=50)
+    @given(st.lists(_RESULTS, max_size=6))
+    def test_sequence_of_batches_stays_sorted_and_aligned(self, batches: list[list[tuple[str, int, int, bool]]]):
+        model = _ResultModel(_RecencyStore())
+        expected: list[tuple[tuple[int, int, int, int], str]] = []
+        for batch in batches:
+            model.add_batch(batch)
+            for path, score, depth, _is_dir in batch:
+                # Empty recency ranks every path at _LIMIT, so the key is fully determined here.
+                expected.append(((score, _RecencyStore._LIMIT, depth, _basename_length(path)), path))
+        assert_that(model._keys).is_equal_to(sorted(model._keys))
+        assert_that(len(model._rows)).is_equal_to(len(model._keys))
+        # Rows must stay aligned with keys: a stable sort of (key, path) reproduces the row order.
+        assert_that(_ordered_paths(model)).is_equal_to([path for _key, path in sorted(expected, key=lambda kp: kp[0])])
