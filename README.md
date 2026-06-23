@@ -1,7 +1,7 @@
 <h1 align="center">Seekbar</h1>
 
 <p align="center">
-  <b>Instant cross-platform file search. One bar, every drive.</b><br>
+  <b>Cross-platform file search. One bar, every drive.</b><br>
   Native per-OS backends, with an <code>os.scandir</code> walk as universal fallback.
 </p>
 
@@ -33,13 +33,13 @@ uv run seekbar
 - **Fuzzy matching** - underscores, hyphens, and spaces are interchangeable; token order doesn't matter
 - **Smart ranking** - results scored by match quality and recency, streamed as they are found
 - **Dark / light / auto theme** with system detection
-- **Keyboard-driven**, frameless, with a global hotkey (Ctrl+Alt+S) and system tray
+- **Keyboard-driven**, frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows only)
 
 ## Keyboard shortcuts
 
 | Shortcut     | Action                               |
 |--------------|--------------------------------------|
-| Ctrl+Alt+S   | Show/hide window (global)            |
+| Ctrl+Alt+S   | Show/hide window (global, Windows)   |
 | F1           | Toggle shortcuts help                |
 | Enter        | Open selected file                   |
 | Esc          | Clear search text, then close window |
