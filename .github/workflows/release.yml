@@ -10,17 +10,15 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            artifact: Seekbar-windows
-            binary: Seekbar.exe
+            suffix: windows-x64
           - os: macos-latest
-            artifact: Seekbar-macos
-            binary: Seekbar
+            suffix: macos
           - os: ubuntu-latest
-            artifact: Seekbar-linux
-            binary: Seekbar
+            suffix: linux-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -38,13 +36,49 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
       - run: uv run pyinstaller seekbar.spec --distpath dist --workpath build --clean
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: dist/Seekbar.exe --version
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: dist/Seekbar --version
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: dist/Seekbar.app/Contents/MacOS/Seekbar --version
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cd dist && 7z a "../Seekbar-${VERSION}-${SUFFIX}.zip" Seekbar.exe
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: tar -C dist -cf - Seekbar.app | xz -9 > "Seekbar-${VERSION}-${SUFFIX}.tar.xz"
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -C dist -cf - Seekbar | xz -9 > "Seekbar-${VERSION}-${SUFFIX}.tar.xz"
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.binary }}
+          name: Seekbar-${{ matrix.suffix }}
+          path: |
+            *.zip
+            *.tar.xz
+          retention-days: 3
 
   release:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -52,14 +86,12 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
-      - name: Package artifacts
+      - name: Collect archives and checksums
         run: |
-          cd artifacts
-          for dir in */; do
-            name="${dir%/}"
-            (cd "$name" && zip -r "../../${name}.zip" .)
-          done
+          mkdir -p release
+          find artifacts -type f \( -name '*.zip' -o -name '*.tar.xz' \) -exec mv {} release/ \;
+          cd release && sha256sum Seekbar-* > SHA256SUMS
       - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          files: "*.zip"
+          files: release/*
           generate_release_notes: true
