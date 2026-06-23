@@ -522,6 +522,8 @@ class MainWindow(QWidget):
         search_field.setFixedHeight(self._search_height)
         search_field.textChanged.connect(self._on_text_changed)
         search_field.returnPressed.connect(self._activate_selected)
+        search_field.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        search_field.customContextMenuRequested.connect(self._show_input_context_menu)
         search_field.installEventFilter(self)
         return search_field
 
@@ -568,6 +570,20 @@ class MainWindow(QWidget):
             painter.end()
             icon.addPixmap(pixmap)
         return icon
+
+    @staticmethod
+    def _tint_icon(icon: QIcon, color: str, size: int = 16) -> QIcon:
+        source = icon.pixmap(QSize(size, size))
+        if source.isNull():
+            return icon
+        tinted = QPixmap(source.size())
+        tinted.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(tinted)
+        painter.drawPixmap(0, 0, source)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(tinted.rect(), QColor(color))
+        painter.end()
+        return QIcon(tinted)
 
     @staticmethod
     def _make_close_icon(theme: Theme) -> QIcon:
@@ -1087,6 +1103,17 @@ class MainWindow(QWidget):
         menu.addAction(act_folder)
         menu.popup(self._result_list.mapToGlobal(pos))
 
+    def _show_input_context_menu(self, pos: QPoint) -> None:
+        menu = self._search_input.createStandardContextMenu()
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.setStyleSheet(self._menu_qss(self._theme))
+        on_surface = self._theme.on_surface
+        for action in menu.actions():
+            icon = action.icon()
+            if not icon.isNull():
+                action.setIcon(self._tint_icon(icon, on_surface))
+        menu.popup(self._search_input.mapToGlobal(pos))
+
     def _open_index(self, index: QModelIndex) -> None:
         self._open_file_by_path(self._result_model.path_at(index.row()))
 
@@ -1160,7 +1187,10 @@ class MainWindow(QWidget):
 
     def _build_tray(self) -> QSystemTrayIcon:
         tray = QSystemTrayIcon(self._make_app_icon(self._theme), self)
-        menu = QMenu()
+        # parent the menu to the window so it inherits the cascaded QMenu stylesheet;
+        # a parentless top-level QMenu is not reliably styled by the native Windows 11 menu backend
+        menu = QMenu(self)
+        menu.setStyleSheet(self._menu_qss(self._theme))
         act_toggle = QAction("Show / Hide", self)
         act_toggle.triggered.connect(self._toggle_visibility)
         act_quit = QAction("Quit", self)
