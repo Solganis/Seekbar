@@ -45,6 +45,9 @@ class TestMainWindow:
     def test_frameless(self, window: MainWindow):
         assert_that(window.windowFlags() & Qt.WindowType.FramelessWindowHint).is_true()
 
+    def test_tool_window_hidden_from_taskbar_and_alt_tab(self, window: MainWindow):
+        assert_that(window.windowFlags() & Qt.WindowType.Tool).is_true()
+
     def test_fixed_width(self, window: MainWindow):
         assert_that(window.width()).is_equal_to(620)
 

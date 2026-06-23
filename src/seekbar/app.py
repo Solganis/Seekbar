@@ -381,7 +381,8 @@ class MainWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Seekbar")
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # Tool keeps the launcher out of the taskbar and the Alt+Tab switcher (summoned via tray/hotkey)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(620)
 
