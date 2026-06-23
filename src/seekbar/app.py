@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seekbar import __version__, autostart
 from seekbar.search import MAX_RESULTS, SearchWorker
 from seekbar.theme import Theme, ThemeMode, resolve_theme
 
@@ -1193,14 +1194,24 @@ class MainWindow(QWidget):
         menu.setStyleSheet(self._menu_qss(self._theme))
         act_toggle = QAction("Show / Hide", self)
         act_toggle.triggered.connect(self._toggle_visibility)
+        self._autostart_action = QAction("Launch at startup", self)
+        self._autostart_action.setCheckable(True)
+        self._autostart_action.setChecked(autostart.is_enabled())
+        # connect after setChecked so the initial state does not emit a spurious toggle
+        self._autostart_action.toggled.connect(self._on_autostart_toggled)
         act_quit = QAction("Quit", self)
         act_quit.triggered.connect(self._quit_app)
         menu.addAction(act_toggle)
+        menu.addAction(self._autostart_action)
         menu.addAction(act_quit)
         tray.setContextMenu(menu)
         tray.activated.connect(self._on_tray_activated)
         tray.show()
         return tray
+
+    @staticmethod
+    def _on_autostart_toggled(enabled: bool) -> None:  # noqa: FBT001 - Qt toggled(bool) signal slot
+        autostart.set_enabled(enabled)
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -1247,7 +1258,16 @@ class MainWindow(QWidget):
             app.installNativeEventFilter(self._hotkey_filter)
 
 
+def _handle_version_flag(argv: list[str]) -> bool:
+    if "--version" in argv or "-V" in argv:
+        sys.stdout.write(f"seekbar {__version__}\n")
+        return True
+    return False
+
+
 def main() -> None:  # pragma: no cover - entry point starts Qt event loop, not unit-testable
+    if _handle_version_flag(sys.argv[1:]):
+        return
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
