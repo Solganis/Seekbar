@@ -90,13 +90,17 @@ if TYPE_CHECKING:
 _IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 1
 _NAME_ROLE = Qt.ItemDataRole.UserRole + 2
 _PARENT_ROLE = Qt.ItemDataRole.UserRole + 3
+# The global hotkey is registered only on Windows (see hotkey.py); elsewhere the tray is the entry point.
+_GLOBAL_HOTKEY_HELP: tuple[tuple[tuple[str, ...], str], ...] = (
+    ((("Ctrl+Alt+S",), "Show / Hide"),) if sys.platform == "win32" else ()
+)
 _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("↑", "↓"), "Navigate"),
     (("PgUp", "PgDn"), "Jump page"),
     (("Enter",), "Open selected"),
     (("Esc",), "Clear / Hide"),
     None,
-    (("Ctrl+Alt+S",), "Show / Hide"),
+    *_GLOBAL_HOTKEY_HELP,
     (("Ctrl+Q",), "Quit"),
     (("Ctrl+T",), "Toggle theme"),
     (("Alt+Drag",), "Move window"),
