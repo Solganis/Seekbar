@@ -1,7 +1,7 @@
 [project]
 name = "seekbar"
-version = "0.1.0"
-description = "Instant cross-platform file search with native backends"
+dynamic = ["version"]
+description = "Cross-platform file search with native backends"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [{name = "Solganis"}]
@@ -13,6 +13,9 @@ seekbar = "seekbar.app:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/seekbar/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/seekbar"]
@@ -38,7 +41,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["seekbar"]
-omit = ["*/__main__.py", "*/_spotlight.py", "*/_locate.py"]
+omit = ["*/__main__.py", "*/_spotlight.py", "*/_locate.py", "*/_autostart_macos.py", "*/_autostart_linux.py"]
 
 [tool.coverage.report]
 show_missing = true

@@ -21,6 +21,7 @@ from seekbar.app import (
     MainWindow,
     _basename_length,
     _FONT_FAMILY,
+    _handle_version_flag,
     _IS_DIR_ROLE,
     _NAME_ROLE,
     _PARENT_ROLE,
@@ -1020,9 +1021,45 @@ class TestSystemTray:
     def test_tray_context_menu_actions(self, window: MainWindow):
         menu = window._tray.contextMenu()
         actions = menu.actions()
-        assert_that(actions).is_length(2)
+        assert_that(actions).is_length(3)
         assert_that(actions[0].text()).is_equal_to("Show / Hide")
-        assert_that(actions[1].text()).is_equal_to("Quit")
+        assert_that(actions[1].text()).is_equal_to("Launch at startup")
+        assert_that(actions[2].text()).is_equal_to("Quit")
+
+    def test_autostart_action_checkable_reflects_state(self, window: MainWindow):
+        assert_that(window._autostart_action.isCheckable()).is_true()
+
+    def test_autostart_toggle_calls_backend(self, window: MainWindow):
+        with patch.object(seekbar.app.autostart, "set_enabled") as mock_set:
+            window._autostart_action.setChecked(False)
+            mock_set.reset_mock()
+            window._autostart_action.setChecked(True)
+            mock_set.assert_called_once_with(True)
+
+    @staticmethod
+    def _window_with_autostart(qtbot: QtBot, *, registered: bool) -> MainWindow:
+        with (
+            patch("seekbar.app._hotkey") as mock_hk,
+            patch.object(seekbar.app.autostart, "is_enabled", return_value=registered),
+        ):
+            mock_hk.register_hotkey.return_value = False
+            win = MainWindow()
+        qtbot.addWidget(win)
+        return win
+
+    def test_autostart_off_by_default_when_not_registered(self, qtbot: QtBot):
+        win = self._window_with_autostart(qtbot, registered=False)
+        try:
+            assert_that(win._autostart_action.isChecked()).is_false()
+        finally:
+            win._tray.hide()
+
+    def test_autostart_reflects_existing_registration(self, qtbot: QtBot):
+        win = self._window_with_autostart(qtbot, registered=True)
+        try:
+            assert_that(win._autostart_action.isChecked()).is_true()
+        finally:
+            win._tray.hide()
 
     def test_tray_menu_styled_at_startup(self, window: MainWindow):
         style = window._tray.contextMenu().styleSheet()
@@ -1451,3 +1488,18 @@ class TestResultModelProperties:
         assert_that(len(model._rows)).is_equal_to(len(model._keys))
         # Rows must stay aligned with keys: a stable sort of (key, path) reproduces the row order.
         assert_that(_ordered_paths(model)).is_equal_to([path for _key, path in sorted(expected, key=lambda kp: kp[0])])
+
+
+class TestVersionFlag:
+    def test_long_flag_prints_version(self, capsys):
+        handled = _handle_version_flag(["--version"])
+        assert_that(handled).is_true()
+        assert_that(capsys.readouterr().out.strip()).is_equal_to(f"seekbar {seekbar.app.__version__}")
+
+    def test_short_flag_handled(self, capsys):
+        assert_that(_handle_version_flag(["-V"])).is_true()
+        assert_that(capsys.readouterr().out).contains(seekbar.app.__version__)
+
+    def test_no_flag_returns_false(self, capsys):
+        assert_that(_handle_version_flag(["query", "text"])).is_false()
+        assert_that(capsys.readouterr().out).is_empty()

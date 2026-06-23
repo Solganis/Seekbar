@@ -51,11 +51,11 @@ jobs:
           import sys
           omit = ["*/__main__.py"]
           if sys.platform != "win32":
-              omit += ["*/_mft.py", "*/hotkey.py"]
+              omit += ["*/_mft.py", "*/hotkey.py", "*/_autostart_windows.py"]
           if sys.platform != "darwin":
-              omit.append("*/_spotlight.py")
+              omit += ["*/_spotlight.py", "*/_autostart_macos.py"]
           if sys.platform != "linux":
-              omit.append("*/_locate.py")
+              omit += ["*/_locate.py", "*/_autostart_linux.py"]
           lines = ["[run]", "source = seekbar", "omit ="]
           lines += [f"    {p}" for p in omit]
           lines += ["", "[report]", "show_missing = true", "exclude_lines ="]
