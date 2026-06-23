@@ -10,8 +10,8 @@ import pytest
 from assertpy2 import assert_that
 from hypothesis import given, settings as hypothesis_settings
 from hypothesis import strategies as st
-from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, QSize, Qt
+from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPixmap
 from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 
 import seekbar.app
@@ -599,12 +599,56 @@ class TestContextMenuIcons:
         window.show()
         with patch.object(seekbar.app.QMenu, "popup"):
             window._show_context_menu(QPoint(10, 10))
-        menu = window.findChild(seekbar.app.QMenu)
-        if menu:
-            actions = menu.actions()
+        tray_menu = window._tray.contextMenu()
+        result_menus = [menu for menu in window.findChildren(seekbar.app.QMenu) if menu is not tray_menu]
+        if result_menus:
+            actions = result_menus[0].actions()
             assert_that(actions).is_length(2)
             assert_that(actions[0].icon().isNull()).is_false()
             assert_that(actions[1].icon().isNull()).is_false()
+
+
+class TestTintIcon:
+    def test_recolors_opaque_pixmap(self, window: MainWindow):
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(QColor("white"))
+        result = window._tint_icon(QIcon(pixmap), "#FF0000")
+        center = result.pixmap(QSize(16, 16)).toImage().pixelColor(8, 8)
+        assert_that(center.name()).is_equal_to("#ff0000")
+
+    def test_null_icon_returned_unchanged(self, window: MainWindow):
+        empty = QIcon()
+        result = window._tint_icon(empty, "#FF0000")
+        assert_that(result.isNull()).is_true()
+
+
+class TestInputContextMenu:
+    def test_standard_menu_is_styled(self, window: MainWindow):
+        with patch.object(seekbar.app.QMenu, "popup") as mock_popup:
+            window._show_input_context_menu(QPoint(5, 5))
+        mock_popup.assert_called_once()
+        menu = window._search_input.findChild(seekbar.app.QMenu)
+        assert menu is not None
+        assert_that(menu.styleSheet()).contains(window._theme.surface_variant)
+
+    def test_iconed_actions_are_tinted_others_untouched(self, window: MainWindow):
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(QColor("white"))
+        fake_menu = seekbar.app.QMenu()
+        iconed = fake_menu.addAction(QIcon(pixmap), "Paste")
+        plain = fake_menu.addAction("Undo")
+        original_key = iconed.icon().cacheKey()
+
+        with (
+            patch.object(window._search_input, "createStandardContextMenu", return_value=fake_menu),
+            patch.object(seekbar.app.QMenu, "popup"),
+        ):
+            window._show_input_context_menu(QPoint(5, 5))
+
+        assert_that(iconed.icon().cacheKey()).is_not_equal_to(original_key)
+        assert_that(plain.icon().isNull()).is_true()
+        center = iconed.icon().pixmap(QSize(16, 16)).toImage().pixelColor(8, 8)
+        assert_that(center.name()).is_equal_to(window._theme.on_surface.lower())
 
 
 class TestBatchInsertion:
@@ -979,6 +1023,15 @@ class TestSystemTray:
         assert_that(actions).is_length(2)
         assert_that(actions[0].text()).is_equal_to("Show / Hide")
         assert_that(actions[1].text()).is_equal_to("Quit")
+
+    def test_tray_menu_styled_at_startup(self, window: MainWindow):
+        style = window._tray.contextMenu().styleSheet()
+        assert_that(style).contains("QMenu")
+        assert_that(style).contains(window._theme.surface_variant)
+
+    def test_tray_menu_restyled_on_theme_change(self, window: MainWindow):
+        window._set_theme(LIGHT_THEME)
+        assert_that(window._tray.contextMenu().styleSheet()).contains(LIGHT_THEME.surface_variant)
 
     def test_close_hides_to_tray(self, window: MainWindow):
         window.show()
