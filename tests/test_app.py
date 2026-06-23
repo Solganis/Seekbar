@@ -1415,7 +1415,7 @@ class TestResultModelMerge:
         model.add_batch([("C:/d/c.txt", 1, 1, False)])
         model.add_batch([("C:/d/d.txt", 5, 1, False), ("C:/d/e.txt", 2, 1, False), ("C:/d/f.txt", 4, 1, False)])
         assert_that(model.rowCount()).is_equal_to(6)
-        assert_that(model._keys).is_equal_to(sorted(model._keys))
+        assert_that(model._keys).is_sorted()
 
     def test_scale_emits_one_run_per_batch(self):
         model = _ResultModel(_RecencyStore())
@@ -1426,7 +1426,7 @@ class TestResultModelMerge:
             model.add_batch([(f"C:/d/{batch_index:03d}{item:03d}.txt", 0, 1, False) for item in range(100)])
         assert_that(model.rowCount()).is_equal_to(10_000)
         assert_that(len(spans)).is_equal_to(100)
-        assert_that(model._keys).is_equal_to(sorted(model._keys))
+        assert_that(model._keys).is_sorted()
 
 
 class TestResultModelProperties:
@@ -1435,7 +1435,7 @@ class TestResultModelProperties:
     def test_keys_stay_sorted(self, results):
         model = _ResultModel(_RecencyStore())
         model.add_batch(results)
-        assert_that(model._keys).is_equal_to(sorted(model._keys))
+        assert_that(model._keys).is_sorted()
 
     @hypothesis_settings(max_examples=50)
     @given(st.lists(_RESULTS, max_size=6))
@@ -1447,7 +1447,7 @@ class TestResultModelProperties:
             for path, score, depth, _is_dir in batch:
                 # Empty recency ranks every path at _LIMIT, so the key is fully determined here.
                 expected.append(((score, _RecencyStore._LIMIT, depth, _basename_length(path)), path))
-        assert_that(model._keys).is_equal_to(sorted(model._keys))
+        assert_that(model._keys).is_sorted()
         assert_that(len(model._rows)).is_equal_to(len(model._keys))
         # Rows must stay aligned with keys: a stable sort of (key, path) reproduces the row order.
         assert_that(_ordered_paths(model)).is_equal_to([path for _key, path in sorted(expected, key=lambda kp: kp[0])])
