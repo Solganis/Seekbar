@@ -1,11 +1,26 @@
+import queue
 import subprocess
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from seekbar.search import MAX_RESULTS, SKIP_DIRS, _matches, _score
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
+
+# Seconds between interruption/limit checks while waiting for the backend to emit a line.
+_POLL_INTERVAL = 0.1
+# Seconds with no output before giving up on a backend that has hung without producing anything.
+_IDLE_TIMEOUT = 30.0
+
+
+def _read_lines(stream: Iterable[str], out_queue: queue.Queue[str | None]) -> None:
+    try:
+        for line in stream:
+            out_queue.put(line)
+    finally:
+        out_queue.put(None)  # always signal EOF so the consumer never blocks forever
 
 
 def subprocess_search(
@@ -19,8 +34,22 @@ def subprocess_search(
     process = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)  # noqa: S603 - command is constructed internally, not from user input
     try:
         assert process.stdout is not None  # noqa: S101 - type narrowing for Popen(stdout=PIPE)
-        for line in process.stdout:
-            if is_interrupted() or count >= MAX_RESULTS:
+        # A blocking `for line in process.stdout` cannot be interrupted, so a backend that hangs
+        # without output would ignore stop requests. Read on a side thread and poll a queue instead.
+        lines: queue.Queue[str | None] = queue.Queue()
+        reader = threading.Thread(target=_read_lines, args=(process.stdout, lines), daemon=True)
+        reader.start()
+        idle = 0.0
+        while not (is_interrupted() or count >= MAX_RESULTS):
+            try:
+                line = lines.get(timeout=_POLL_INTERVAL)
+            except queue.Empty:
+                idle += _POLL_INTERVAL
+                if idle >= _IDLE_TIMEOUT:
+                    break
+                continue
+            idle = 0.0
+            if line is None:
                 break
             path = line.rstrip("\r\n")
             if not path:

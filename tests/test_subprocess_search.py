@@ -1,4 +1,5 @@
 import os
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -20,6 +21,29 @@ class _FakeProcess:
 
     def terminate(self):
         self._terminated = True
+
+    def wait(self):
+        pass
+
+
+class _HangingProcess:
+    """Backend that produces no output and blocks until terminated (simulates a hung mdfind/locate)."""
+
+    def __init__(self):
+        self._released = threading.Event()
+        self._terminated = False
+        self.stdout = self
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self._released.wait()
+        raise StopIteration
+
+    def terminate(self):
+        self._terminated = True
+        self._released.set()
 
     def wait(self):
         pass
@@ -212,3 +236,34 @@ class TestSubprocessSearch:
             )
 
         assert_that(count).is_equal_to(1)
+
+    def test_interruption_while_waiting_for_output(self):
+        process = _HangingProcess()
+        call_count = 0
+
+        def interrupt_after_first():
+            nonlocal call_count
+            call_count += 1
+            return call_count > 1
+
+        results: list[tuple[str, int, int, bool]] = []
+
+        with patch(_POPEN, return_value=process):
+            count = subprocess_search(
+                ["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), interrupt_after_first
+            )
+
+        assert_that(count).is_equal_to(0)
+        assert_that(process._terminated).is_true()
+
+    def test_idle_timeout_terminates_hung_backend(self, monkeypatch):
+        monkeypatch.setattr("seekbar._subprocess_search._POLL_INTERVAL", 0.01)
+        monkeypatch.setattr("seekbar._subprocess_search._IDLE_TIMEOUT", 0.05)
+        process = _HangingProcess()
+        results: list[tuple[str, int, int, bool]] = []
+
+        with patch(_POPEN, return_value=process):
+            count = subprocess_search(["cmd"], "hosts", ["hosts"], lambda *args: results.append(args), lambda: False)
+
+        assert_that(count).is_equal_to(0)
+        assert_that(process._terminated).is_true()
