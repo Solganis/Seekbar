@@ -59,3 +59,5 @@
 <tr><td><kbd>F2</kbd></td><td>Donate links</td></tr>
 </table>
 </div>
+
+---
