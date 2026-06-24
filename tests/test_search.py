@@ -69,6 +69,25 @@ def _force_walk_backend(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("seekbar._mft.is_ntfs", lambda _drive: False)
 
 
+@pytest.fixture(autouse=True)
+def _join_search_workers(monkeypatch: pytest.MonkeyPatch):
+    # SearchWorker is a QThread whose custom `finished` signal fires inside run(), a hair before the thread
+    # actually terminates. If the local worker is garbage-collected in that window, Qt aborts the process
+    # with "QThread: Destroyed while thread is still running" (flaky on CI). Track every started worker and
+    # join it after the test so the underlying thread is fully stopped before the object is dropped.
+    started: list[SearchWorker] = []
+    original_start = SearchWorker.start
+
+    def tracked_start(self: SearchWorker) -> None:
+        started.append(self)
+        original_start(self)
+
+    monkeypatch.setattr(SearchWorker, "start", tracked_start)
+    yield
+    for worker in started:
+        worker.wait(5000)
+
+
 class TestNormalize:
     def test_underscore_to_space(self):
         assert_that(_normalize("hello_world")).is_equal_to("hello world")
