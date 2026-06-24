@@ -104,6 +104,19 @@ class TestNormalize:
     def test_empty_string(self):
         assert_that(_normalize("")).is_empty()
 
+    def test_fast_path_returns_same_object(self):
+        # Perf invariant (P2 #6): with no "_"/"-", _normalize must skip translate and return the
+        # input object itself - zero allocation. Equality cannot catch a dropped fast-path, since
+        # translate always yields an equal-but-new string; identity can.
+        text = "helloworld"
+        assert_that(_normalize(text)).is_same_as(text)
+
+    def test_separator_input_allocates_new_object(self):
+        # The complementary side: when a separator is present, translate runs and a new string is
+        # produced, so the fast-path condition cannot be widened to swallow these inputs.
+        text = "hello_world"
+        assert_that(_normalize(text)).is_not_same_as(text)
+
 
 class TestMatches:
     def test_exact_substring(self):
@@ -157,6 +170,13 @@ class TestScore:
 
     def test_no_extension_exact_match(self):
         assert_that(_score("makefile", "Makefile")).is_equal_to(0)
+
+    def test_substring_sorting_before_query_is_not_exact_or_stem(self):
+        # "az" contains the query "z" but sorts lexicographically before it. It is a genuine
+        # ends-with match (score 3) and must not be mistaken for an exact (0) or stem (1) match:
+        # the equality guards must stay "==", never weaken to "<=", which would treat any
+        # earlier-sorting superstring as a full match.
+        assert_that(_score_from_normalized("z", "az")).is_equal_to(3)
 
     def test_normalized_exact_match(self):
         assert_that(_score("hello world", "hello_world")).is_equal_to(0)
@@ -610,6 +630,21 @@ class TestWalkSearchStrategy:
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert_that(results).is_length(3)
 
+    def test_max_results_stops_before_popping_next_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        # Fill the cap from one subdirectory while another still sits on the stack. The cap is
+        # reached at a directory boundary, so only the loop-start check (not the per-entry check)
+        # can stop the descent: this pins that "(initial + count) >= MAX" guard against mutation.
+        for name in ("dir_a", "dir_b"):
+            sub = tmp_path / name
+            sub.mkdir()
+            (sub / "hosts_match").touch()
+        monkeypatch.setattr(seekbar.search, "MAX_RESULTS", 1)
+
+        results: list[str] = []
+        strategy = WalkSearchStrategy([tmp_path])
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
+        assert_that(results).is_length(1)
+
     def test_skips_excluded_dirs(self, tmp_path: Path):
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
@@ -690,6 +725,18 @@ class TestMftSearchStrategy:
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert_that(results).is_length(1)
         assert_that(results[0]).is_equal_to("C:\\Users\\hosts.txt")
+
+    def test_deferred_match_counted_once(self, monkeypatch: pytest.MonkeyPatch):
+        # The deferred (orphan-then-parent) match is tallied in _resolve_pending. The emitted paths
+        # alone do not pin the running count, so assert the returned total increments by exactly one.
+        hosts_file = MftRecord(file_ref=10, parent_ref=20, name="hosts.txt", is_dir=False)
+        parent_dir = MftRecord(file_ref=20, parent_ref=5, name="Users", is_dir=True)
+        batches = [[hosts_file], [parent_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        strategy = MftSearchStrategy("C:")
+        count = strategy.execute("hosts", ["hosts"], lambda *_args: None, lambda: False)
+        assert_that(count).is_equal_to(1)
 
     def test_orphan_never_emitted(self, monkeypatch: pytest.MonkeyPatch):
         orphan = MftRecord(file_ref=10, parent_ref=999, name="hosts.txt", is_dir=False)
@@ -829,6 +876,18 @@ class TestMftSearchStrategy:
         assert_that(strategy._pending).is_empty()
 
 
+class _CountingRecords(dict[int, tuple[int, str, bool]]):
+    """Records dict that counts reads, to assert skip-cache short-circuits ancestor re-walks."""
+
+    def __init__(self, data: dict[int, tuple[int, str, bool]]) -> None:
+        super().__init__(data)
+        self.reads = 0
+
+    def __getitem__(self, key: int) -> tuple[int, str, bool]:
+        self.reads += 1
+        return super().__getitem__(key)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
 class TestIsUnderSkipDir:
     def test_direct_skip_dir(self):
@@ -885,6 +944,28 @@ class TestIsUnderSkipDir:
         assert_that(strategy._is_under_skip_dir(10)).is_false()
         assert_that(strategy._skip_cache[10]).is_false()
         assert_that(strategy._skip_cache[20]).is_false()
+
+    def test_warm_cache_short_circuits_at_cached_ancestor(self):
+        # Perf invariant (P0 #1): _is_under_skip_dir caches every ref it walks, so a later lookup
+        # for a sibling stops at the first cached ancestor instead of re-walking up to the root.
+        records = _CountingRecords(
+            {
+                100: (200, "file.txt", False),
+                200: (300, "src", True),
+                300: (5, "node_modules", True),
+                150: (200, "other.txt", False),
+            }
+        )
+        strategy = MftSearchStrategy("C:")
+        strategy._records = records
+        strategy._skip_refs = {300}
+        strategy._is_under_skip_dir(100)  # walks 100 -> 200 -> hits skip ref 300, caches 100 and 200
+        reads_after_warm = records.reads
+        result = strategy._is_under_skip_dir(150)
+        assert_that(result).is_true()
+        # Sibling 150 reads only its own record, then short-circuits on the cached ancestor 200.
+        assert_that(records.reads - reads_after_warm).is_equal_to(1)
+        assert_that(strategy._skip_cache[150]).is_true()
 
 
 class TestSearchWorkerStrategy:
