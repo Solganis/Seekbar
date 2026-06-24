@@ -15,37 +15,44 @@
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json" alt="ty"></a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Seekbar - dark and light themes" width="75%">
+</p>
+
 ---
 
-## Quick start
+<h2 align="center">Quick start</h2>
 
-Download the latest build from [Releases](https://github.com/Solganis/Seekbar/releases) and run it.
+<p align="center">
+  Download the latest build from <a href="https://github.com/Solganis/Seekbar/releases">Releases</a> and run it, or run from source:
+</p>
 
-To run from source:
+<p align="center">
+  <code>uv sync</code> &nbsp;then&nbsp; <code>uv run seekbar</code>
+</p>
 
-```bash
-uv sync
-uv run seekbar
-```
+<h2 align="center">Features</h2>
 
-## Features
+<p align="center">
+  <b>Native backends</b> - NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux, <code>os.scandir</code> fallback everywhere<br>
+  <b>Fuzzy matching</b> - underscores, hyphens, and spaces are interchangeable; token order doesn't matter<br>
+  <b>Smart ranking</b> - results scored by match quality and recency, streamed as they are found<br>
+  <b>Dark / light / auto theme</b> with system detection<br>
+  <b>Keyboard-driven</b>, frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows only)
+</p>
 
-- **Native backends** - NTFS MFT on Windows, Spotlight on macOS, `plocate`/`locate` on Linux, `os.scandir` fallback everywhere
-- **Fuzzy matching** - underscores, hyphens, and spaces are interchangeable; token order doesn't matter
-- **Smart ranking** - results scored by match quality and recency, streamed as they are found
-- **Dark / light / auto theme** with system detection
-- **Keyboard-driven**, frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows only)
+<h2 align="center">Keyboard shortcuts</h2>
 
-## Keyboard shortcuts
-
-| Shortcut     | Action                               |
-|--------------|--------------------------------------|
-| Ctrl+Alt+S   | Show/hide window (global, Windows)   |
-| F1           | Toggle shortcuts help                |
-| Enter        | Open selected file                   |
-| Esc          | Clear search text, then close window |
-| Ctrl+T       | Cycle theme (auto/light/dark)        |
-| Ctrl+Q       | Quit application                     |
-| Up/Down      | Navigate results                     |
-| Page Up/Down | Jump by page                         |
-| F2           | Donate links                         |
+<div align="center">
+<table>
+<tr><td><kbd>Ctrl+Alt+S</kbd></td><td>Show / hide window (global, Windows)</td></tr>
+<tr><td><kbd>F1</kbd></td><td>Toggle shortcuts help</td></tr>
+<tr><td><kbd>Enter</kbd></td><td>Open selected file</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Clear search text, then close window</td></tr>
+<tr><td><kbd>Ctrl+T</kbd></td><td>Cycle theme (auto / light / dark)</td></tr>
+<tr><td><kbd>Ctrl+Q</kbd></td><td>Quit application</td></tr>
+<tr><td><kbd>Up</kbd> / <kbd>Down</kbd></td><td>Navigate results</td></tr>
+<tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Jump by page</td></tr>
+<tr><td><kbd>F2</kbd></td><td>Donate links</td></tr>
+</table>
+</div>
