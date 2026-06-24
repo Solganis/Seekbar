@@ -1,10 +1,6 @@
 <h1 align="center">Seekbar</h1>
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="Seekbar - dark and light themes" width="75%">
-</p>
-
-<p align="center">
   <b>Cross-platform file search. One bar, every drive.</b><br>
   Native per-OS backends, with an <code>os.scandir</code> walk as universal fallback.
 </p>
@@ -17,6 +13,10 @@
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json" alt="ty"></a>
+</p>
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="Seekbar - dark and light themes" width="75%">
 </p>
 
 ---
