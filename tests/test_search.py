@@ -57,6 +57,15 @@ class _FakeScandir:
         return iter(self._entries)
 
 
+@pytest.fixture(autouse=True)
+def _force_walk_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Worker-integration tests seed a tmp tree and expect the os.scandir walk. On macOS/Linux the worker
+    # would otherwise run the real mdfind/locate backend over the whole system (wrong results, and the
+    # subprocess can segfault under Qt threads). Reporting the backend as absent forces the walk on every
+    # OS. Strategy-dispatch tests re-set shutil.which in their own bodies, so this does not constrain them.
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+
+
 class TestNormalize:
     def test_underscore_to_space(self):
         assert_that(_normalize("hello_world")).is_equal_to("hello world")
@@ -246,13 +255,6 @@ class TestDiscoverRoots:
 
 
 class TestSearchWorker:
-    @pytest.fixture(autouse=True)
-    def _force_walk(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # These tests seed a tmp tree and expect the walk strategy. On macOS/Linux the worker would
-        # otherwise run the real mdfind/locate backend (which finds nothing here and can segfault);
-        # making shutil.which report the backend as absent forces the os.scandir walk on every OS.
-        monkeypatch.setattr("shutil.which", lambda _cmd: None)
-
     @pytest.fixture
     def search_tree(self, tmp_path: Path) -> Path:
         (tmp_path / "hosts").touch()

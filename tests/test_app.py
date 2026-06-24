@@ -1290,6 +1290,7 @@ class TestGlobalHotkey:
         assert_that(result).is_equal_to((False, 0))
         callback.assert_not_called()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only _HotkeyFilter")
     def test_quit_unregisters_hotkey(self, qtbot: QtBot):
         with patch("seekbar.app._hotkey") as mock_hk:
             mock_hk.register_hotkey.return_value = True
