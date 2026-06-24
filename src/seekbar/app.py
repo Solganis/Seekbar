@@ -826,19 +826,19 @@ class MainWindow(QWidget):
             }}
             QScrollBar:vertical {{
                 background: transparent;
-                width: 6px;
+                width: 14px;
                 margin: 4px 2px;
             }}
             QScrollBar:vertical:hover {{
-                width: 10px;
+                width: 16px;
             }}
             QScrollBar::handle:vertical {{
                 background: {theme.outline};
-                border-radius: 3px;
-                min-height: 20px;
+                border-radius: 5px;
+                min-height: 24px;
             }}
             QScrollBar::handle:vertical:hover {{
-                border-radius: 5px;
+                border-radius: 6px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
