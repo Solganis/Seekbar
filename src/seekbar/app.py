@@ -22,6 +22,7 @@ from PySide6.QtCore import (
     QTimer,
     QUrl,
     QVariantAnimation,
+    Signal,
 )
 from PySide6.QtGui import (
     QAction,
@@ -36,6 +37,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -77,8 +79,14 @@ if sys.platform == "win32":
                     return True, 0
             return False, 0
 
-else:  # pragma: no cover - non-Windows fallback
+    _hotkey_mac = None
+elif sys.platform == "darwin":  # pragma: no cover - macOS-only branch
+    from seekbar import _hotkey_macos as _hotkey_mac
+
     _hotkey = None
+else:  # pragma: no cover - non-Windows/macOS fallback
+    _hotkey = None
+    _hotkey_mac = None
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -385,8 +393,7 @@ class MainWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Seekbar")
-        # Tool keeps the launcher out of the taskbar and the Alt+Tab switcher (summoned via tray/hotkey)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(620)
 
@@ -524,6 +531,7 @@ class MainWindow(QWidget):
     def _build_search_input(self) -> QLineEdit:
         search_field = QLineEdit()
         search_field.setObjectName("searchInput")
+        search_field.setAccessibleName("Search input")
         search_field.setPlaceholderText("Search all drives...")
         search_field.setFixedHeight(self._search_height)
         search_field.textChanged.connect(self._on_text_changed)
@@ -548,6 +556,7 @@ class MainWindow(QWidget):
     def _build_close_button(self) -> QPushButton:
         button = QPushButton()
         button.setObjectName("closeButton")
+        button.setAccessibleName("Close")
         button.setToolTip("")
         button.setFixedSize(self._search_height - 12, self._search_height - 12)
         button.setIcon(self._make_close_icon(self._theme))
@@ -618,6 +627,7 @@ class MainWindow(QWidget):
         self._result_model = _ResultModel(self._recency, self)
         result_list = QListView()
         result_list.setObjectName("resultList")
+        result_list.setAccessibleName("Search results")
         result_list.setModel(self._result_model)
         result_list.setUniformItemSizes(True)
         self._delegate = _ResultDelegate(self._theme, result_list)
@@ -939,7 +949,14 @@ class MainWindow(QWidget):
                     self._search_input.clear()
                 else:
                     self.close()
-            case Qt.Key.Key_Down | Qt.Key.Key_Up | Qt.Key.Key_PageDown | Qt.Key.Key_PageUp:
+            case (
+                Qt.Key.Key_Down
+                | Qt.Key.Key_Up
+                | Qt.Key.Key_PageDown
+                | Qt.Key.Key_PageUp
+                | Qt.Key.Key_Home
+                | Qt.Key.Key_End
+            ):
                 self._handle_navigation(event.key())
             case Qt.Key.Key_Return | Qt.Key.Key_Enter:
                 self._activate_selected()
@@ -964,6 +981,10 @@ class MainWindow(QWidget):
                 self._move_selection(self._MAX_VISIBLE)
             case Qt.Key.Key_PageUp:
                 self._move_selection(-self._MAX_VISIBLE)
+            case Qt.Key.Key_Home:
+                self._move_selection(-self._result_model.rowCount())
+            case Qt.Key.Key_End:
+                self._move_selection(self._result_model.rowCount())
 
     def _move_selection(self, delta: int) -> None:
         count = self._result_model.rowCount()
@@ -1193,6 +1214,7 @@ class MainWindow(QWidget):
 
     def _build_tray(self) -> QSystemTrayIcon:
         tray = QSystemTrayIcon(self._make_app_icon(self._theme), self)
+        tray.setToolTip("Seekbar")
         # parent the menu to the window so it inherits the cascaded QMenu stylesheet;
         # a parentless top-level QMenu is not reliably styled by the native Windows 11 menu backend
         menu = QMenu(self)
@@ -1226,15 +1248,18 @@ class MainWindow(QWidget):
         if self.isVisible():
             self.hide()
         else:
-            self.show()
-            self.raise_()
-            self.activateWindow()
-            if sys.platform == "win32":
-                # windll.user32.SetForegroundWindow is a dynamic WinDLL attribute, Windows-only
-                # noinspection PyUnresolvedReferences
-                ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
-            self._search_input.setFocus()
-            self._search_input.selectAll()
+            self._show_window()
+
+    def _show_window(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        if sys.platform == "win32":
+            # windll.user32.SetForegroundWindow is a dynamic WinDLL attribute, Windows-only
+            # noinspection PyUnresolvedReferences
+            ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+        self._search_input.setFocus()
+        self._search_input.selectAll()
 
     def _quit_app(self) -> None:
         self._save_window_position(self.pos())
@@ -1244,6 +1269,8 @@ class MainWindow(QWidget):
             app = QApplication.instance()
             if app is not None and self._hotkey_filter is not None:
                 app.removeNativeEventFilter(self._hotkey_filter)
+        elif _hotkey_mac is not None and self._hotkey_registered:
+            _hotkey_mac.unregister_hotkey()
         self._tray.hide()
         QApplication.quit()
 
@@ -1252,15 +1279,16 @@ class MainWindow(QWidget):
     def _init_hotkey(self) -> None:
         self._hotkey_registered = False
         self._hotkey_filter: QAbstractNativeEventFilter | None = None
-        if _hotkey is None:
-            return
-        self._hotkey_registered = _hotkey.register_hotkey()
-        if not self._hotkey_registered:
-            return
-        self._hotkey_filter = _HotkeyFilter(self._toggle_visibility)
-        app = QApplication.instance()
-        if app is not None:
-            app.installNativeEventFilter(self._hotkey_filter)
+        if _hotkey is not None:
+            self._hotkey_registered = _hotkey.register_hotkey()
+            if not self._hotkey_registered:
+                return
+            self._hotkey_filter = _HotkeyFilter(self._toggle_visibility)
+            app = QApplication.instance()
+            if app is not None:
+                app.installNativeEventFilter(self._hotkey_filter)
+        elif _hotkey_mac is not None:
+            self._hotkey_registered = _hotkey_mac.register_hotkey(self._toggle_visibility)
 
 
 def _handle_version_flag(argv: list[str]) -> bool:
@@ -1270,12 +1298,53 @@ def _handle_version_flag(argv: list[str]) -> bool:
     return False
 
 
+_SINGLE_INSTANCE_KEY = "seekbar-single-instance"
+
+
+class _SingleInstanceGuard(QObject):
+    activated = Signal()
+
+    def __init__(self, key: str, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._key = key
+        self._server: QLocalServer | None = None
+
+    def is_primary(self) -> bool:
+        probe = QLocalSocket()
+        probe.connectToServer(self._key)
+        if probe.waitForConnected(200):
+            probe.write(b"show")
+            probe.flush()
+            probe.waitForBytesWritten(200)
+            probe.disconnectFromServer()
+            return False
+        QLocalServer.removeServer(self._key)  # clear a stale socket left by a crashed instance (Unix)
+        self._server = QLocalServer(self)
+        self._server.newConnection.connect(self._on_new_connection)
+        self._server.listen(self._key)
+        return True
+
+    def _on_new_connection(self) -> None:
+        server = self._server
+        if server is not None:
+            connection = server.nextPendingConnection()
+            if connection is not None:
+                connection.close()
+        self.activated.emit()
+
+
 def main() -> None:  # pragma: no cover - entry point starts Qt event loop, not unit-testable
     if _handle_version_flag(sys.argv[1:]):
         return
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    guard = _SingleInstanceGuard(_SINGLE_INSTANCE_KEY)
+    if not guard.is_primary():
+        return
     window = MainWindow()
+    guard.setParent(window)
+    # main() wires the second-instance ping to the window's show method
+    guard.activated.connect(window._show_window)  # noqa: SLF001
     window.show()
     sys.exit(app.exec())
 
