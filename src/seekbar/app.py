@@ -58,7 +58,7 @@ from seekbar import __version__, autostart
 from seekbar.search import MAX_RESULTS, SearchWorker
 from seekbar.theme import Theme, ThemeMode, resolve_theme
 
-if sys.platform == "win32":
+if sys.platform == "win32":  # pragma: no cover - Windows-only, not reachable off win32
     import ctypes.wintypes
 
     from seekbar import hotkey as _hotkey
@@ -1254,7 +1254,7 @@ class MainWindow(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
-        if sys.platform == "win32":
+        if sys.platform == "win32":  # pragma: no cover - Windows-only, not reachable off win32
             # windll.user32.SetForegroundWindow is a dynamic WinDLL attribute, Windows-only
             # noinspection PyUnresolvedReferences
             ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
@@ -1264,7 +1264,7 @@ class MainWindow(QWidget):
     def _quit_app(self) -> None:
         self._save_window_position(self.pos())
         self._stop_search()
-        if _hotkey is not None and self._hotkey_registered:
+        if _hotkey is not None and self._hotkey_registered:  # pragma: no cover - Windows-only, not reachable off win32
             _hotkey.unregister_hotkey()
             app = QApplication.instance()
             if app is not None and self._hotkey_filter is not None:
@@ -1279,7 +1279,7 @@ class MainWindow(QWidget):
     def _init_hotkey(self) -> None:
         self._hotkey_registered = False
         self._hotkey_filter: QAbstractNativeEventFilter | None = None
-        if _hotkey is not None:
+        if _hotkey is not None:  # pragma: no cover - Windows-only, not reachable off win32
             self._hotkey_registered = _hotkey.register_hotkey()
             if not self._hotkey_registered:
                 return
