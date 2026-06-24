@@ -1,7 +1,7 @@
 <h1 align="center">Seekbar</h1>
 
 <p align="center">
-  <b>Cross-platform file search. One bar, every drive.</b><br>
+  <b>Minimalist cross-platform file search. One bar, every drive.</b><br>
   Native per-OS backends, with an <code>os.scandir</code> walk as universal fallback.
 </p>
 
@@ -34,11 +34,11 @@
 <h2 align="center">Features</h2>
 
 <p align="center">
-  <b>Native backends</b> - NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux, <code>os.scandir</code> fallback everywhere<br>
+  <b>Native backends</b> - NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux<br>
   <b>Flexible matching</b> - underscores, hyphens, and spaces are interchangeable; token order doesn't matter<br>
   <b>Smart ranking</b> - results scored by match quality and recency, streamed as they are found<br>
-  <b>Dark / light / auto theme</b> with system detection<br>
-  <b>Keyboard-driven</b>, frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows and macOS)
+  <b>Keyboard-driven</b>, frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows and macOS)<br>
+  <b>Dark / light / auto theme</b> with system detection
 </p>
 
 <h2 align="center">Keyboard shortcuts</h2>
