@@ -246,6 +246,13 @@ class TestDiscoverRoots:
 
 
 class TestSearchWorker:
+    @pytest.fixture(autouse=True)
+    def _force_walk(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # These tests seed a tmp tree and expect the walk strategy. On macOS/Linux the worker would
+        # otherwise run the real mdfind/locate backend (which finds nothing here and can segfault);
+        # making shutil.which report the backend as absent forces the os.scandir walk on every OS.
+        monkeypatch.setattr("shutil.which", lambda _cmd: None)
+
     @pytest.fixture
     def search_tree(self, tmp_path: Path) -> Path:
         (tmp_path / "hosts").touch()

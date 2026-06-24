@@ -34,6 +34,9 @@ ignore = ["D", "COM812", "ISC001"]
 
 [tool.ty.environment]
 python-version = "3.14"
+# pin the platform so ty resolves the same Windows view on every CI runner (tests reference
+# win32-only symbols like _HotkeyFilter; without this, ty fails on the Linux lint runner)
+python-platform = "win32"
 
 [tool.pytest.ini_options]
 qt_api = "pyside6"
