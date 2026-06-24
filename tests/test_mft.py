@@ -30,7 +30,7 @@ from seekbar._mft import (
 )
 
 
-def _build_usn_record(file_ref, parent_ref, name, *, is_dir=False):
+def _build_usn_record(file_ref, parent_ref, name, *, is_dir=False, attributes=None):
     name_bytes = name.encode("utf-16-le")
     name_offset = ctypes.sizeof(_UsnRecordV2)
     record_length = name_offset + len(name_bytes)
@@ -43,7 +43,10 @@ def _build_usn_record(file_ref, parent_ref, name, *, is_dir=False):
     record.MajorVersion = 2
     record.FileReferenceNumber = file_ref
     record.ParentFileReferenceNumber = parent_ref
-    record.FileAttributes = FILE_ATTRIBUTE_DIRECTORY if is_dir else 0
+    if attributes is not None:
+        record.FileAttributes = attributes
+    else:
+        record.FileAttributes = FILE_ATTRIBUTE_DIRECTORY if is_dir else 0
     record.FileNameLength = len(name_bytes)
     record.FileNameOffset = name_offset
     record_buffer[name_offset : name_offset + len(name_bytes)] = name_bytes
@@ -133,6 +136,18 @@ class TestEnumerateMft:
         assert_that(records[11]).is_equal_to((5, "docs", True))
 
 
+class _CountingRecords(dict[int, tuple[int, str, bool]]):
+    """Records dict that counts reads, to assert resolve_path reuses cached ancestors."""
+
+    def __init__(self, data: dict[int, tuple[int, str, bool]]) -> None:
+        super().__init__(data)
+        self.reads = 0
+
+    def __getitem__(self, key: int) -> tuple[int, str, bool]:
+        self.reads += 1
+        return super().__getitem__(key)
+
+
 class TestResolvePath:
     def test_simple_path(self):
         records = {10: (5, "hosts.txt", False)}
@@ -192,6 +207,25 @@ class TestResolvePath:
         assert_that(cache[10]).is_equal_to("C:\\Users")
         assert_that(cache[11]).is_equal_to("C:\\Users\\admin")
         assert_that(cache[12]).is_equal_to("C:\\Users\\admin\\hosts.txt")
+
+    def test_warm_cache_sibling_reads_one_record(self):
+        # Perf invariant (P0 #2): once a chain is cached, resolving a sibling under an already
+        # resolved parent reads only the sibling's own record - it must not re-walk to the root.
+        records = _CountingRecords(
+            {
+                10: (5, "Users", True),
+                11: (10, "admin", True),
+                12: (11, "hosts.txt", False),
+                13: (11, "other.txt", False),
+            }
+        )
+        cache: dict[int, str] = {}
+        resolve_path(12, records, 5, "C:", cache)  # warms refs 12, 11 and 10
+        reads_after_warm = records.reads
+        result = resolve_path(13, records, 5, "C:", cache)
+        assert_that(result).is_equal_to("C:\\Users\\admin\\other.txt")
+        # Sibling 13 reads its own record once, then reuses the cached ancestor 11.
+        assert_that(records.reads - reads_after_warm).is_equal_to(1)
 
 
 class TestMftRecord:
@@ -268,6 +302,35 @@ class TestStreamMftBatches:
 
         assert_that(batch[0]).is_equal_to(MftRecord(file_ref=10, parent_ref=5, name="hosts.txt", is_dir=False))
         assert_that(batch[1]).is_equal_to(MftRecord(file_ref=11, parent_ref=5, name="docs", is_dir=True))
+
+    def test_is_dir_isolates_the_directory_bit(self, monkeypatch):
+        # A regular file can carry attribute bits other than the directory flag (ARCHIVE = 0x20),
+        # and a directory often carries extra bits too. is_dir must come from a bitwise AND with
+        # FILE_ATTRIBUTE_DIRECTORY: the archived file stays not-a-dir, the archived dir stays a dir.
+        file_data = _build_usn_record(10, 5, "report.txt", attributes=0x20)
+        dir_data = _build_usn_record(11, 5, "docs", attributes=FILE_ATTRIBUTE_DIRECTORY | 0x20)
+        next_ref_bytes = bytes(ctypes.c_ulonglong(99))
+        data = next_ref_bytes + file_data + dir_data
+        total_len = len(data)
+
+        call_count = [0]
+
+        def fake_device_io(_h, _c, _ib, _is, out_buf, _os, bytes_ret_ptr, _ov):
+            if call_count[0] > 0:
+                return 0
+            call_count[0] += 1
+            ctypes.memmove(out_buf, data, total_len)
+            bytes_ret_ptr.contents.value = total_len
+            return 1
+
+        mock_kernel = MagicMock()
+        mock_kernel.DeviceIoControl = fake_device_io
+        monkeypatch.setattr("seekbar._mft.kernel32", mock_kernel)
+
+        batches = list(_stream_mft_batches(42))
+        batch = batches[0]
+        assert_that(batch[0].is_dir).is_false()
+        assert_that(batch[1].is_dir).is_true()
 
 
 class TestStreamMft:

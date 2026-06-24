@@ -5,7 +5,13 @@ import pytest
 from assertpy2 import assert_that
 from PySide6.QtCore import Qt
 
+import seekbar.theme
 from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, contrast_ratio, resolve_theme
+
+# noinspection PyProtectedMember
+_linearize = seekbar.theme._linearize
+# noinspection PyProtectedMember
+_SRGB_LINEAR_THRESHOLD = seekbar.theme._SRGB_LINEAR_THRESHOLD
 
 
 class TestThemeMode:
@@ -93,6 +99,26 @@ class TestResolveTheme:
     def test_auto_no_app(self):
         with patch("seekbar.theme.QGuiApplication.instance", return_value=None):
             assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
+
+
+class TestLinearize:
+    def test_linear_branch_pins_divisor_and_operator(self):
+        # The linear branch (srgb <= threshold) is otherwise exercised only by black, where srgb
+        # is 0 and every operator and divisor collapses to 0. A nonzero value inside the segment
+        # pins both the "/" operator and the 12.92 constant against mutation.
+        srgb = 0.04
+        assert_that(_linearize(srgb)).is_close_to(srgb / 12.92, 1e-12)
+
+    def test_threshold_is_inclusive(self):
+        # Exactly at the threshold the inclusive "<=" must stay on the linear branch; a strict "<"
+        # would fall through to the gamma branch and return a measurably different value.
+        srgb = _SRGB_LINEAR_THRESHOLD
+        assert_that(_linearize(srgb)).is_close_to(srgb / 12.92, 1e-12)
+
+    def test_gamma_branch_above_threshold(self):
+        # Just above the threshold the gamma branch runs; pins it independently of the contrast tests.
+        srgb = 0.05
+        assert_that(_linearize(srgb)).is_close_to(((srgb + 0.055) / 1.055) ** 2.4, 1e-12)
 
 
 class TestContrastRatio:
