@@ -59,11 +59,14 @@ class _FakeScandir:
 
 @pytest.fixture(autouse=True)
 def _force_walk_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Worker-integration tests seed a tmp tree and expect the os.scandir walk. On macOS/Linux the worker
-    # would otherwise run the real mdfind/locate backend over the whole system (wrong results, and the
-    # subprocess can segfault under Qt threads). Reporting the backend as absent forces the walk on every
-    # OS. Strategy-dispatch tests re-set shutil.which in their own bodies, so this does not constrain them.
+    # Worker-integration tests seed a tmp tree and expect the os.scandir walk. Force every native backend to
+    # report as unavailable so the worker always walks: shutil.which -> None disables Spotlight/locate
+    # (macOS/Linux); on Windows is_ntfs -> False disables the MFT path, which would otherwise open the
+    # runner's real volume (its work dir lives on D:) and stream the whole drive's MFT, hanging the process.
+    # Strategy-dispatch tests re-patch shutil.which / is_ntfs in their own bodies, so this does not bind them.
     monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    if sys.platform == "win32":
+        monkeypatch.setattr("seekbar._mft.is_ntfs", lambda _drive: False)
 
 
 class TestNormalize:
