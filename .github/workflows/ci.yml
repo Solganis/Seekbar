@@ -63,6 +63,11 @@ jobs:
           with open(".coveragerc", "w") as f:
               f.write("\n".join(lines) + "\n")
       - name: Run tests
-        run: uv run pytest tests/ -v --cov --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=100
+        run: uv run pytest tests/ -v --cov --cov-config=.coveragerc --cov-report=term-missing --cov-report=xml --cov-fail-under=100
         env:
           QT_QPA_PLATFORM: offscreen
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: ${{ matrix.os }}
