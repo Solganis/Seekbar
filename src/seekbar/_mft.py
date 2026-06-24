@@ -1,7 +1,7 @@
 import ctypes
 import ctypes.wintypes
 import sys
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -130,7 +130,7 @@ def _stream_mft_batches(handle: int) -> Iterator[list[MftRecord]]:
             record = _UsnRecordV2.from_buffer_copy(read_buffer, offset)
             name_start = offset + record.FileNameOffset
             name_end = name_start + record.FileNameLength
-            name = bytes(read_buffer[name_start:name_end]).decode("utf-16-le")
+            name = cast("bytes", read_buffer[name_start:name_end]).decode("utf-16-le")
 
             batch.append(
                 MftRecord(

@@ -62,7 +62,7 @@ _SRGB_LINEAR_THRESHOLD = 0.04045
 def _linearize(srgb: float) -> float:
     if srgb <= _SRGB_LINEAR_THRESHOLD:
         return srgb / 12.92
-    return ((srgb + 0.055) / 1.055) ** 2.4
+    return float(((srgb + 0.055) / 1.055) ** 2.4)
 
 
 def _relative_luminance(hex_color: str) -> float:
