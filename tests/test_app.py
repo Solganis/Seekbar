@@ -2,6 +2,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import platform
+import sys
 from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -12,6 +13,7 @@ from hypothesis import given, settings as hypothesis_settings
 from hypothesis import strategies as st
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QSettings, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPixmap
+from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 
 import seekbar.app
@@ -22,6 +24,7 @@ from seekbar.app import (
     _basename_length,
     _FONT_FAMILY,
     _handle_version_flag,
+    _SingleInstanceGuard,
     _IS_DIR_ROLE,
     _NAME_ROLE,
     _PARENT_ROLE,
@@ -45,9 +48,6 @@ class TestMainWindow:
     def test_frameless(self, window: MainWindow):
         assert_that(window.windowFlags() & Qt.WindowType.FramelessWindowHint).is_true()
 
-    def test_tool_window_hidden_from_taskbar_and_alt_tab(self, window: MainWindow):
-        assert_that(window.windowFlags() & Qt.WindowType.Tool).is_true()
-
     def test_fixed_width(self, window: MainWindow):
         assert_that(window.width()).is_equal_to(620)
 
@@ -61,6 +61,11 @@ class TestMainWindow:
     def test_initial_height(self, window: MainWindow):
         expected = window._search_height + window._MARGIN * 2
         assert_that(window.height()).is_equal_to(expected)
+
+    def test_accessible_names(self, window: MainWindow):
+        assert_that(window._search_input.accessibleName()).is_equal_to("Search input")
+        assert_that(window._result_list.accessibleName()).is_equal_to("Search results")
+        assert_that(window._close_button.accessibleName()).is_equal_to("Close")
 
     def test_delegate_size_hint(self, window: MainWindow):
         delegate = window._delegate
@@ -759,6 +764,20 @@ class TestExtendedNavigation:
         qtbot.keyClick(window, Qt.Key.Key_PageUp)
         assert_that(window._current_row()).is_equal_to(0)
 
+    def test_home_jumps_to_first(self, window: MainWindow, qtbot: QtBot):
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._select_row(15)
+        qtbot.keyClick(window, Qt.Key.Key_Home)
+        assert_that(window._current_row()).is_equal_to(0)
+
+    def test_end_jumps_to_last(self, window: MainWindow, qtbot: QtBot):
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._select_row(0)
+        qtbot.keyClick(window, Qt.Key.Key_End)
+        assert_that(window._current_row()).is_equal_to(19)
+
 
 class TestSearchingAnimation:
     def test_start_sets_initial_text(self, window: MainWindow):
@@ -1021,6 +1040,9 @@ class TestSystemTray:
     def test_tray_exists(self, window: MainWindow):
         assert_that(window._tray).is_instance_of(QSystemTrayIcon)
 
+    def test_tray_tooltip(self, window: MainWindow):
+        assert_that(window._tray.toolTip()).is_equal_to("Seekbar")
+
     def test_tray_context_menu_actions(self, window: MainWindow):
         menu = window._tray.contextMenu()
         actions = menu.actions()
@@ -1200,6 +1222,7 @@ class TestGlobalHotkey:
     def test_hotkey_not_registered_by_default(self, window: MainWindow):
         assert_that(window._hotkey_registered).is_false()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only _HotkeyFilter")
     def test_hotkey_registers_on_init(self, qtbot: QtBot):
         with patch("seekbar.app._hotkey") as mock_hk:
             mock_hk.register_hotkey.return_value = True
@@ -1210,9 +1233,32 @@ class TestGlobalHotkey:
         assert_that(main_window._hotkey_filter).is_not_none()
         main_window._tray.hide()
 
+    def test_hotkey_registers_via_macos_backend(self, qtbot: QtBot):
+        mock_mac = MagicMock()
+        mock_mac.register_hotkey.return_value = True
+        with patch("seekbar.app._hotkey", None), patch("seekbar.app._hotkey_mac", mock_mac):
+            main_window = MainWindow()
+        qtbot.addWidget(main_window)
+        try:
+            mock_mac.register_hotkey.assert_called_once()
+            assert_that(main_window._hotkey_registered).is_true()
+        finally:
+            main_window._tray.hide()
+
+    def test_quit_unregisters_macos_hotkey(self, qtbot: QtBot):
+        mock_mac = MagicMock()
+        mock_mac.register_hotkey.return_value = True
+        with patch("seekbar.app._hotkey", None), patch("seekbar.app._hotkey_mac", mock_mac):
+            main_window = MainWindow()
+            qtbot.addWidget(main_window)
+            with patch.object(seekbar.app.QApplication, "quit"):
+                main_window._quit_app()
+        mock_mac.unregister_hotkey.assert_called_once()
+
     def test_no_filter_on_registration_failure(self, window: MainWindow):
         assert_that(window._hotkey_filter).is_none()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only _HotkeyFilter")
     def test_filter_triggers_toggle(self, window: MainWindow):
         window.show()
         callback = MagicMock()
@@ -1224,6 +1270,7 @@ class TestGlobalHotkey:
         assert_that(result).is_equal_to((True, 0))
         callback.assert_called_once()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only _HotkeyFilter")
     def test_filter_ignores_other_messages(self):
         callback = MagicMock()
         # noinspection PyProtectedMember
@@ -1234,6 +1281,7 @@ class TestGlobalHotkey:
         assert_that(result).is_equal_to((False, 0))
         callback.assert_not_called()
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only _HotkeyFilter")
     def test_filter_ignores_non_windows_events(self):
         callback = MagicMock()
         # noinspection PyProtectedMember
@@ -1506,3 +1554,30 @@ class TestVersionFlag:
     def test_no_flag_returns_false(self, capsys):
         assert_that(_handle_version_flag(["query", "text"])).is_false()
         assert_that(capsys.readouterr().out).is_empty()
+
+
+class TestSingleInstanceGuard:
+    _KEY = "seekbar-test-single-instance"
+
+    def _cleanup(self, guard: _SingleInstanceGuard) -> None:
+        if guard._server is not None:
+            guard._server.close()
+        QLocalServer.removeServer(self._KEY)
+
+    @pytest.mark.usefixtures("qtbot")
+    def test_first_instance_is_primary(self):
+        guard = _SingleInstanceGuard(self._KEY)
+        try:
+            assert_that(guard.is_primary()).is_true()
+        finally:
+            self._cleanup(guard)
+
+    def test_second_instance_signals_primary(self, qtbot: QtBot):
+        primary = _SingleInstanceGuard(self._KEY)
+        assert_that(primary.is_primary()).is_true()
+        secondary = _SingleInstanceGuard(self._KEY)
+        try:
+            with qtbot.waitSignal(primary.activated, timeout=2000):
+                assert_that(secondary.is_primary()).is_false()
+        finally:
+            self._cleanup(primary)

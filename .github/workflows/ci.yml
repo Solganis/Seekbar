@@ -53,7 +53,7 @@ jobs:
           if sys.platform != "win32":
               omit += ["*/_mft.py", "*/hotkey.py", "*/_autostart_windows.py"]
           if sys.platform != "darwin":
-              omit += ["*/_spotlight.py", "*/_autostart_macos.py"]
+              omit += ["*/_spotlight.py", "*/_autostart_macos.py", "*/_hotkey_macos.py"]
           if sys.platform != "linux":
               omit += ["*/_locate.py", "*/_autostart_linux.py"]
           lines = ["[run]", "source = seekbar", "omit ="]
