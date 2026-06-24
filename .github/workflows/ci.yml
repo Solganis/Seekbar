@@ -50,8 +50,11 @@ jobs:
         run: |
           import sys
           omit = ["*/__main__.py"]
+          exclude = ["pragma: no cover", "if TYPE_CHECKING:", "if __name__"]
           if sys.platform != "win32":
               omit += ["*/_mft.py", "*/hotkey.py", "*/_autostart_windows.py"]
+              # search.py also carries the Windows-only MFT strategy and drive scan (tested on Windows only)
+              exclude += ["class MftSearchStrategy", "_run_with_mft_fallback", "_search_root_mft", "string.ascii_uppercase"]
           if sys.platform != "darwin":
               omit += ["*/_spotlight.py", "*/_autostart_macos.py", "*/_hotkey_macos.py"]
           if sys.platform != "linux":
@@ -59,7 +62,7 @@ jobs:
           lines = ["[run]", "source = seekbar", "omit ="]
           lines += [f"    {p}" for p in omit]
           lines += ["", "[report]", "show_missing = true", "exclude_lines ="]
-          lines += ["    pragma: no cover", "    if TYPE_CHECKING:", "    if __name__"]
+          lines += [f"    {p}" for p in exclude]
           with open(".coveragerc", "w") as f:
               f.write("\n".join(lines) + "\n")
       - name: Run tests
