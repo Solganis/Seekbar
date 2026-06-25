@@ -33,15 +33,13 @@
 
 <h2 align="center">Features</h2>
 
-<div align="center">
-<table>
-<tr><td><b>Native backends</b></td><td>NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux</td></tr>
-<tr><td><b>Flexible matching</b></td><td>underscores, hyphens, and spaces are interchangeable; token order doesn't matter</td></tr>
-<tr><td><b>Smart ranking</b></td><td>results scored by match quality and recency, streamed as they are found</td></tr>
-<tr><td><b>Keyboard-driven</b></td><td>frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows and macOS)</td></tr>
-<tr><td><b>Dark / light / auto theme</b></td><td>with system detection</td></tr>
-</table>
-</div>
+<p align="center">
+  <b>Native backends</b> &middot; NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux<br>
+  <b>Flexible matching</b> &middot; underscores, hyphens, and spaces are interchangeable; token order doesn't matter<br>
+  <b>Smart ranking</b> &middot; results scored by match quality and recency, streamed as they are found<br>
+  <b>Keyboard-driven</b> &middot; frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows and macOS)<br>
+  <b>Dark / light / auto theme</b> &middot; with system detection
+</p>
 
 <h2 align="center">Keyboard shortcuts</h2>
 
