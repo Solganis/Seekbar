@@ -35,7 +35,7 @@ from seekbar.app import (
     _system_font_family,
 )
 from seekbar.search import MAX_RESULTS
-from seekbar.theme import DARK_THEME, LIGHT_THEME, ThemeMode
+from seekbar.theme import ACCENTS, DARK_THEME, DEFAULT_ACCENT, LIGHT_THEME, ThemeMode, TrayIconMode
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -145,6 +145,15 @@ class TestHeightSync:
         item_h = window._delegate.item_height
         expected = window._search_height + 1 + window._MAX_VISIBLE * item_h + window._RADIUS + window._MARGIN * 2
         assert_that(window.height()).is_equal_to(expected)
+
+    def test_fit_card_never_below_content(self, window: MainWindow):
+        window._content_height = 300
+        # A short (mid-grow) window must not squeeze the card below its content height.
+        window._fit_card(100)
+        assert_that(window._card.height()).is_equal_to(300)
+        # A taller (mid-shrink) window must be fully covered by the card, not the desktop.
+        window._fit_card(500)
+        assert_that(window._card.height()).is_equal_to(500 - window._MARGIN * 2)
 
 
 class TestSearchLifecycle:
@@ -385,6 +394,22 @@ class TestContextMenu:
     def test_no_item(self, window: MainWindow):
         window._show_context_menu(QPoint(9999, 9999))
 
+    def test_file_item_labels_open_file(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        captured: list = []
+        monkeypatch.setattr(seekbar.app.QMenu, "popup", lambda menu, *_args: captured.append(menu))
+        window._add_result("C:/test/file.txt", 0)
+        window.show()
+        window._show_context_menu(QPoint(10, 10))
+        assert_that(captured[0].actions()[0].text()).is_equal_to("Open file")
+
+    def test_dir_item_labels_open_folder(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+        captured: list = []
+        monkeypatch.setattr(seekbar.app.QMenu, "popup", lambda menu, *_args: captured.append(menu))
+        window._add_result("C:/test/folder", 0, is_dir=True)
+        window.show()
+        window._show_context_menu(QPoint(10, 10))
+        assert_that(captured[0].actions()[0].text()).is_equal_to("Open folder")
+
 
 class TestFileOpening:
     def test_open_file(self, window: MainWindow, monkeypatch: pytest.MonkeyPatch):
@@ -487,7 +512,7 @@ class TestThemeSwitching:
 
     def test_cycle_applies_theme(self, window: MainWindow):
         window._cycle_theme()
-        assert_that(window._theme).is_same_as(LIGHT_THEME)
+        assert_that(window._theme).is_equal_to(LIGHT_THEME)
 
     def test_set_theme_updates_delegate(self, window: MainWindow):
         window._set_theme(LIGHT_THEME)
@@ -499,7 +524,7 @@ class TestThemeSwitching:
         mock_app.styleHints.return_value.colorScheme.return_value = Qt.ColorScheme.Light
         with patch("seekbar.theme.QGuiApplication.instance", return_value=mock_app):
             window._on_system_theme_changed(Qt.ColorScheme.Light)
-        assert_that(window._theme).is_same_as(LIGHT_THEME)
+        assert_that(window._theme).is_equal_to(LIGHT_THEME)
 
     def test_system_theme_change_ignored_in_manual_mode(self, window: MainWindow):
         window._theme_mode = ThemeMode.DARK
@@ -954,13 +979,32 @@ class TestHelpPopup:
         window._on_search_done(0)
         assert_that(window.height()).is_equal_to(height_before)
 
+    def test_typing_with_help_animates_collapse(self, window: MainWindow):
+        window._toggle_help()
+        window._finalize_height()
+        window._search_input.setText("query")
+        window._finalize_height()
+        expected = window._search_height + window._MARGIN * 2
+        assert_that(window.height()).is_equal_to(expected)
+        assert_that(window._help_popup.isHidden()).is_true()
+
+    def test_clear_text_with_help_animates_collapse(self, window: MainWindow):
+        window._search_input.setText("query")
+        window._toggle_help()
+        window._finalize_height()
+        window._search_input.setText("")
+        window._finalize_height()
+        expected = window._search_height + window._MARGIN * 2
+        assert_that(window.height()).is_equal_to(expected)
+        assert_that(window._help_popup.isHidden()).is_true()
+
 
 class TestDonatePopup:
-    def test_f2_toggles_donate_popup(self, window: MainWindow, qtbot):
+    def test_f3_toggles_donate_popup(self, window: MainWindow, qtbot):
         assert_that(window._donate_popup.isHidden()).is_true()
-        qtbot.keyClick(window, Qt.Key.Key_F2)
+        qtbot.keyClick(window, Qt.Key.Key_F3)
         assert_that(window._donate_popup.isHidden()).is_false()
-        qtbot.keyClick(window, Qt.Key.Key_F2)
+        qtbot.keyClick(window, Qt.Key.Key_F3)
         assert_that(window._donate_popup.isHidden()).is_true()
 
     def test_f2_hides_help(self, window: MainWindow):
@@ -1034,6 +1078,114 @@ class TestDonatePopup:
         assert_that(window._height_target).is_equal_to(expected)
         window._finalize_height()
         assert_that(window.height()).is_equal_to(expected)
+
+
+class TestSettings:
+    def test_load_accent(self, window: MainWindow):
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        settings.setValue("accent", "blue")
+        assert_that(window._load_accent()).is_equal_to("blue")
+        settings.setValue("accent", "does-not-exist")
+        assert_that(window._load_accent()).is_equal_to(DEFAULT_ACCENT)
+        settings.setValue("accent", 123)
+        assert_that(window._load_accent()).is_equal_to(DEFAULT_ACCENT)
+
+    def test_load_tray_icon_mode(self, window: MainWindow):
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        settings.setValue("tray_icon_mode", "white")
+        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
+        settings.setValue("tray_icon_mode", "bogus")
+        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.AUTO)
+
+    def test_icon_color_modes(self, window: MainWindow):
+        window._theme = DARK_THEME
+        window._tray_icon_mode = TrayIconMode.WHITE
+        assert_that(window._icon_color()).is_equal_to("#FFFFFF")
+        window._tray_icon_mode = TrayIconMode.BLACK
+        assert_that(window._icon_color()).is_equal_to("#000000")
+        window._tray_icon_mode = TrayIconMode.ACCENT
+        assert_that(window._icon_color()).is_equal_to(DARK_THEME.primary)
+        window._tray_icon_mode = TrayIconMode.AUTO
+        assert_that(window._icon_color()).is_equal_to(DARK_THEME.on_surface)
+
+    def test_set_accent_noop(self, window: MainWindow):
+        window._set_accent(window._accent_id)
+        assert_that(window._accent_id).is_equal_to(DEFAULT_ACCENT)
+
+    def test_set_tray_icon_mode_noop(self, window: MainWindow):
+        window._set_tray_icon_mode(window._tray_icon_mode)
+        assert_that(window._tray_icon_mode).is_equal_to(TrayIconMode.AUTO)
+
+    def test_settings_popup_hidden_initially(self, window: MainWindow):
+        assert_that(window._settings_popup.isHidden()).is_true()
+
+    def test_accent_buttons_built_and_active_checked(self, window: MainWindow):
+        assert_that(window._accent_buttons).is_length(len(ACCENTS))
+        checked = [accent_id for accent_id, button in window._accent_buttons.items() if button.isChecked()]
+        assert_that(checked).is_equal_to([DEFAULT_ACCENT])
+
+    def test_tray_buttons_built_and_active_checked(self, window: MainWindow):
+        assert_that(window._tray_buttons).is_length(4)
+        checked = [mode for mode, button in window._tray_buttons.items() if button.isChecked()]
+        assert_that(checked).is_equal_to([TrayIconMode.AUTO])
+
+    def test_accent_button_click_changes_accent(self, window: MainWindow):
+        window._theme_mode = ThemeMode.DARK
+        window._accent_buttons["blue"].click()
+        assert_that(window._accent_id).is_equal_to("blue")
+        assert_that(window._theme.primary).is_equal_to(ACCENTS["blue"].primary_dark)
+        assert_that(window._load_accent()).is_equal_to("blue")
+        assert_that(window._accent_buttons["blue"].isChecked()).is_true()
+
+    def test_tray_button_click_changes_mode(self, window: MainWindow):
+        old_key = window._tray.icon().cacheKey()
+        window._tray_buttons[TrayIconMode.WHITE].click()
+        assert_that(window._tray_icon_mode).is_equal_to(TrayIconMode.WHITE)
+        assert_that(window._tray.icon().cacheKey()).is_not_equal_to(old_key)
+        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
+        assert_that(window._tray_buttons[TrayIconMode.WHITE].isChecked()).is_true()
+
+    def test_accent_swatch_style_matches_theme(self, window: MainWindow):
+        window._set_theme(LIGHT_THEME)
+        qss = window._accent_buttons["blue"].styleSheet()
+        assert_that(qss).contains(ACCENTS["blue"].primary_light)
+        assert_that(qss).contains(ACCENTS["blue"].selected_light)
+        window._set_theme(DARK_THEME)
+        qss = window._accent_buttons["blue"].styleSheet()
+        assert_that(qss).contains(ACCENTS["blue"].primary_dark)
+        assert_that(qss).contains(ACCENTS["blue"].selected_dark)
+
+    def test_f2_toggles_settings_popup(self, window: MainWindow, qtbot: QtBot):
+        assert_that(window._settings_popup.isHidden()).is_true()
+        qtbot.keyClick(window, Qt.Key.Key_F2)
+        assert_that(window._settings_popup.isHidden()).is_false()
+        qtbot.keyClick(window, Qt.Key.Key_F2)
+        assert_that(window._settings_popup.isHidden()).is_true()
+
+    def test_settings_hides_other_popups(self, window: MainWindow):
+        window._toggle_help()
+        window._toggle_settings()
+        assert_that(window._help_popup.isHidden()).is_true()
+        assert_that(window._settings_popup.isHidden()).is_false()
+
+    def test_help_hides_settings_popup(self, window: MainWindow):
+        window._toggle_settings()
+        window._toggle_help()
+        assert_that(window._settings_popup.isHidden()).is_true()
+        assert_that(window._help_popup.isHidden()).is_false()
+
+    def test_sync_height_with_settings(self, window: MainWindow):
+        window._toggle_settings()
+        settings_height = window._settings_popup.sizeHint().height()
+        expected = window._search_height + 1 + settings_height + window._RADIUS + window._MARGIN * 2
+        assert_that(window._height_target).is_equal_to(expected)
+        window._finalize_height()
+        assert_that(window.height()).is_equal_to(expected)
+
+    def test_typing_dismisses_settings_popup(self, window: MainWindow):
+        window._toggle_settings()
+        window._search_input.setText("query")
+        assert_that(window._settings_popup.isHidden()).is_true()
 
 
 class TestSystemTray:
@@ -1203,6 +1355,21 @@ class TestAltDrag:
             Qt.KeyboardModifier.AltModifier,
         )
         assert_that(window.eventFilter(window._search_input, move_event)).is_true()
+
+    def test_mouse_move_without_button_does_not_drag(self, window: MainWindow):
+        # A stale drag offset must not let plain cursor movement (no button) fling the window.
+        window._drag_pos = QPoint(10, 10)
+        before = window.pos()
+        move_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(20, 20),
+            QPointF(120, 120),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        assert_that(window.eventFilter(window._search_input, move_event)).is_false()
+        assert_that(window.pos()).is_equal_to(before)
 
     def test_mouse_release_ends_drag(self, window: MainWindow):
         window._drag_pos = QPoint(10, 10)

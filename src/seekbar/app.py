@@ -40,9 +40,12 @@ from PySide6.QtGui import (
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListView,
     QMenu,
@@ -56,7 +59,7 @@ from PySide6.QtWidgets import (
 
 from seekbar import __version__, autostart
 from seekbar.search import MAX_RESULTS, SearchWorker
-from seekbar.theme import Theme, ThemeMode, resolve_theme
+from seekbar.theme import ACCENTS, DEFAULT_ACCENT, Theme, ThemeMode, TrayIconMode, is_dark, resolve_theme
 
 if sys.platform == "win32":  # pragma: no cover - Windows-only, not reachable off win32
     import ctypes.wintypes
@@ -116,7 +119,8 @@ _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("Alt+Drag",), "Move window"),
     None,
     (("F1",), "This help"),
-    (("F2",), "About"),
+    (("F2",), "Settings"),
+    (("F3",), "About"),
 )
 
 _DONATE_WEB: tuple[tuple[str, str], ...] = (
@@ -400,8 +404,10 @@ class MainWindow(QWidget):
         self.setFixedWidth(620)
 
         self._theme_mode = self._load_theme_mode()
-        self._theme = resolve_theme(self._theme_mode)
-        self.setWindowIcon(self._make_app_icon(self._theme))
+        self._accent_id = self._load_accent()
+        self._tray_icon_mode = self._load_tray_icon_mode()
+        self._theme = resolve_theme(self._theme_mode, self._accent_id)
+        self.setWindowIcon(self._make_app_icon(self._icon_color()))
 
         search_font = QFont(_FONT_FAMILY, 11)
         self._search_height = QFontMetrics(search_font).height() * 2 + 10
@@ -420,6 +426,8 @@ class MainWindow(QWidget):
         self._result_list = self._build_result_list()
         self._help_popup = self._build_help_popup()
         self._donate_popup = self._build_donate_popup()
+        self._settings_popup = self._build_settings_popup()
+        self._popups = (self._help_popup, self._donate_popup, self._settings_popup)
         self._assemble_layout()
         self._apply_styles()
         self._update_palette()
@@ -449,16 +457,12 @@ class MainWindow(QWidget):
         self._searching_timer.setInterval(400)
         self._searching_timer.timeout.connect(self._animate_searching)
 
-        self._help_hide_timer = QTimer(self)
-        self._help_hide_timer.setSingleShot(True)
-        self._help_hide_timer.setInterval(5000)
-        self._help_hide_timer.timeout.connect(self._hide_popups)
-
         self._temp_status_timer = QTimer(self)
         self._temp_status_timer.setSingleShot(True)
         self._temp_status_timer.timeout.connect(self._restore_status)
 
         self._height_target = 0
+        self._content_height = 0
         self._height_anim = QVariantAnimation(self)
         self._height_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._height_anim.setDuration(150)
@@ -478,6 +482,38 @@ class MainWindow(QWidget):
     def _save_theme_mode(mode: ThemeMode) -> None:
         settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         settings.setValue("theme_mode", mode.value)
+
+    @staticmethod
+    def _load_accent() -> str:
+        raw = QSettings(SETTINGS_ORG, SETTINGS_APP).value("accent", DEFAULT_ACCENT)
+        return raw if isinstance(raw, str) and raw in ACCENTS else DEFAULT_ACCENT
+
+    @staticmethod
+    def _save_accent(accent_id: str) -> None:
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("accent", accent_id)
+
+    @staticmethod
+    def _load_tray_icon_mode() -> TrayIconMode:
+        raw = QSettings(SETTINGS_ORG, SETTINGS_APP).value("tray_icon_mode", TrayIconMode.AUTO.value)
+        try:
+            return TrayIconMode(raw)
+        except ValueError:
+            return TrayIconMode.AUTO
+
+    @staticmethod
+    def _save_tray_icon_mode(mode: TrayIconMode) -> None:
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("tray_icon_mode", mode.value)
+
+    def _icon_color(self) -> str:
+        match self._tray_icon_mode:
+            case TrayIconMode.WHITE:
+                return "#FFFFFF"
+            case TrayIconMode.BLACK:
+                return "#000000"
+            case TrayIconMode.ACCENT:
+                return self._theme.primary
+            case TrayIconMode.AUTO:
+                return self._theme.on_surface
 
     @staticmethod
     def _load_window_position() -> QPoint | None:
@@ -502,11 +538,13 @@ class MainWindow(QWidget):
         self._theme = theme
         self._apply_styles()
         self._update_palette()
-        self.setWindowIcon(self._make_app_icon(theme))
-        self._tray.setIcon(self._make_app_icon(theme))
+        icon = self._make_app_icon(self._icon_color())
+        self.setWindowIcon(icon)
+        self._tray.setIcon(icon)
         self._close_button.setIcon(self._make_close_icon(theme))
         self._help_popup.setText(self._help_html())
         self._donate_popup.setText(self._donate_html())
+        self._refresh_settings()
         self._delegate.set_theme(theme)
         self._result_list.viewport().update()
 
@@ -519,11 +557,28 @@ class MainWindow(QWidget):
             case ThemeMode.DARK:
                 self._theme_mode = ThemeMode.AUTO
         self._save_theme_mode(self._theme_mode)
-        self._set_theme(resolve_theme(self._theme_mode))
+        self._set_theme(resolve_theme(self._theme_mode, self._accent_id))
 
     def _on_system_theme_changed(self, _scheme: Qt.ColorScheme) -> None:
         if self._theme_mode == ThemeMode.AUTO:
-            self._set_theme(resolve_theme(ThemeMode.AUTO))
+            self._set_theme(resolve_theme(ThemeMode.AUTO, self._accent_id))
+
+    def _set_accent(self, accent_id: str) -> None:
+        if accent_id == self._accent_id:
+            return
+        self._accent_id = accent_id
+        self._save_accent(accent_id)
+        self._set_theme(resolve_theme(self._theme_mode, accent_id))
+
+    def _set_tray_icon_mode(self, mode: TrayIconMode) -> None:
+        if mode == self._tray_icon_mode:
+            return
+        self._tray_icon_mode = mode
+        self._save_tray_icon_mode(mode)
+        icon = self._make_app_icon(self._icon_color())
+        self.setWindowIcon(icon)
+        self._tray.setIcon(icon)
+        self._refresh_settings()
 
     def _build_card(self) -> QFrame:
         card = QFrame(self)
@@ -568,7 +623,7 @@ class MainWindow(QWidget):
         return button
 
     @staticmethod
-    def _make_app_icon(theme: Theme) -> QIcon:
+    def _make_app_icon(color_hex: str) -> QIcon:
         icon = QIcon()
         for size in (16, 32, 48):
             pixmap = QPixmap(size, size)
@@ -576,12 +631,12 @@ class MainWindow(QWidget):
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             scale = size / 32.0
-            color = QColor(theme.primary)
-            painter.setPen(QPen(color, 2.0 * scale))
+            color = QColor(color_hex)
+            painter.setPen(QPen(color, 3.4 * scale))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             cx, cy, radius = 12.0 * scale, 12.0 * scale, 8.0 * scale
             painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
-            painter.setPen(QPen(color, 2.5 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setPen(QPen(color, 4.0 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             hx, hy = cx + radius * 0.707, cy + radius * 0.707
             painter.drawLine(int(hx), int(hy), int(hx + 7 * scale), int(hy + 7 * scale))
             painter.end()
@@ -718,7 +773,6 @@ class MainWindow(QWidget):
         )
 
     def _on_donate_link(self, url: str) -> None:
-        self._help_hide_timer.stop()
         self._drag_pos = None
         if url.startswith("copy:"):
             address = url.removeprefix("copy:")
@@ -727,6 +781,80 @@ class MainWindow(QWidget):
         else:
             self._hide_popups()
             QDesktopServices.openUrl(QUrl(url))
+
+    def _build_settings_popup(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("settingsPopup")
+        outer = QHBoxLayout(panel)
+        outer.setContentsMargins(16, 12, 16, 12)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
+        grid.addWidget(QLabel("Accent"), 0, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        grid.addWidget(QLabel("Tray icon"), 1, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        accent_row = QHBoxLayout()
+        accent_row.setSpacing(8)
+        self._accent_group = QButtonGroup(panel)
+        self._accent_buttons: dict[str, QPushButton] = {}
+        for accent_id in ACCENTS:
+            button = QPushButton()
+            button.setCheckable(True)
+            button.setFixedSize(40, 24)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda *_args, chosen=accent_id: self._set_accent(chosen))
+            self._accent_group.addButton(button)
+            accent_row.addWidget(button)
+            self._accent_buttons[accent_id] = button
+        grid.addLayout(accent_row, 0, 1)
+
+        tray_row = QHBoxLayout()
+        tray_row.setSpacing(8)
+        self._tray_group = QButtonGroup(panel)
+        self._tray_buttons: dict[TrayIconMode, QPushButton] = {}
+        for mode in TrayIconMode:
+            button = QPushButton(mode.value.capitalize())
+            button.setObjectName("trayButton")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda *_args, chosen=mode: self._set_tray_icon_mode(chosen))
+            self._tray_group.addButton(button)
+            tray_row.addWidget(button)
+            self._tray_buttons[mode] = button
+        grid.addLayout(tray_row, 1, 1)
+
+        outer.addStretch()
+        outer.addLayout(grid)
+        outer.addStretch()
+
+        self._refresh_settings()
+        panel.hide()
+        return panel
+
+    def _accent_swatch_qss(self, selected: str, primary: str) -> str:
+        # Two-tone chip: left half is the result-row fill, right half is the bar/scroll accent.
+        theme = self._theme
+        return f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {selected}, stop:0.5 {selected}, stop:0.5 {primary}, stop:1 {primary});
+                border: 2px solid transparent;
+                border-radius: 7px;
+            }}
+            QPushButton:hover {{ border: 2px solid {theme.on_surface_variant}; }}
+            QPushButton:checked {{ border: 2px solid {theme.on_surface}; }}
+        """
+
+    def _refresh_settings(self) -> None:
+        dark = is_dark(self._theme)
+        for accent_id, button in self._accent_buttons.items():
+            accent = ACCENTS[accent_id]
+            primary_color = accent.primary_dark if dark else accent.primary_light
+            selected_color = accent.selected_dark if dark else accent.selected_light
+            button.setStyleSheet(self._accent_swatch_qss(selected_color, primary_color))
+            button.setChecked(accent_id == self._accent_id)
+        for mode, button in self._tray_buttons.items():
+            button.setChecked(mode == self._tray_icon_mode)
 
     def _assemble_layout(self) -> None:
         top_row = QHBoxLayout()
@@ -744,10 +872,16 @@ class MainWindow(QWidget):
         self._card_layout.addWidget(self._result_list)
         self._card_layout.addWidget(self._help_popup)
         self._card_layout.addWidget(self._donate_popup)
+        self._card_layout.addWidget(self._settings_popup)
+        # Keeps content top-pinned and the card's own background (not the desktop) in the slack mid-shrink.
+        self._card_layout.addStretch()
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(self._MARGIN, self._MARGIN, self._MARGIN, self._MARGIN)
-        outer.addWidget(self._card)
+        # Let our explicit setFixedHeight drive the height animation; the layout must not impose a
+        # minimum window height from the card and fight it (that makes the window jump).
+        outer.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        outer.addWidget(self._card, alignment=Qt.AlignmentFlag.AlignTop)
 
     @staticmethod
     def _menu_qss(theme: Theme) -> str:
@@ -829,16 +963,16 @@ class MainWindow(QWidget):
                 width: 14px;
                 margin: 4px 2px;
             }}
-            QScrollBar:vertical:hover {{
-                width: 16px;
-            }}
             QScrollBar::handle:vertical {{
                 background: {theme.outline};
                 border-radius: 5px;
                 min-height: 24px;
             }}
             QScrollBar::handle:vertical:hover {{
-                border-radius: 6px;
+                background: {theme.on_surface_variant};
+            }}
+            QScrollBar::handle:vertical:pressed {{
+                background: {theme.primary};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
@@ -851,24 +985,48 @@ class MainWindow(QWidget):
                 font-family: "{_FONT_FAMILY}", sans-serif;
                 font-size: 9pt;
             }}
+            #settingsPopup {{
+                background-color: {theme.surface_variant};
+                border: none;
+            }}
+            #settingsPopup QLabel {{
+                color: {theme.on_surface_variant};
+                background: transparent;
+                font-family: "{_FONT_FAMILY}", sans-serif;
+                font-size: 9pt;
+            }}
+            #settingsPopup QPushButton#trayButton {{
+                background-color: {theme.outline};
+                color: {theme.on_surface};
+                border: none;
+                border-radius: 6px;
+                padding: 3px 12px;
+                font-family: "{_FONT_FAMILY}", sans-serif;
+                font-size: 8pt;
+            }}
+            #settingsPopup QPushButton#trayButton:hover {{
+                background-color: {theme.hover};
+            }}
+            #settingsPopup QPushButton#trayButton:checked {{
+                background-color: {theme.primary};
+                color: {theme.surface};
+            }}
         """)
 
     def _sync_height(self, *, animate: bool = False) -> None:
         self._height_anim.stop()
         count = self._result_model.rowCount()
         has_results = count > 0
-        help_visible = not self._help_popup.isHidden()
-        donate_visible = not self._donate_popup.isHidden()
-        popup_visible = help_visible or donate_visible
+        visible_popup = next((popup for popup in self._popups if not popup.isHidden()), None)
+        popup_visible = visible_popup is not None
 
         self._result_list.setVisible(has_results and not popup_visible)
         self._separator.setVisible(has_results or popup_visible)
         has_content = has_results or popup_visible
         self._card_layout.setContentsMargins(0, 0, 0, self._RADIUS if has_content else 0)
 
-        if popup_visible:
-            popup = self._help_popup if help_visible else self._donate_popup
-            popup_height = popup.sizeHint().height()
+        if visible_popup is not None:
+            popup_height = visible_popup.sizeHint().height()
             card_height = self._search_height + 1 + popup_height + self._RADIUS
         elif has_results:
             visible = min(count, self._MAX_VISIBLE)
@@ -877,8 +1035,10 @@ class MainWindow(QWidget):
         else:
             card_height = self._search_height
 
+        self._content_height = card_height
         target = card_height + self._MARGIN * 2
-        if animate and target > self.height():
+        self._fit_card(self.height())
+        if animate and target != self.height():
             self._height_target = target
             self._height_anim.setStartValue(self.height())
             self._height_anim.setEndValue(target)
@@ -886,8 +1046,14 @@ class MainWindow(QWidget):
         else:
             self._set_height_preserving_pos(target)
 
+    def _fit_card(self, window_height: int) -> None:
+        # Card fills the window (its background covers a shrink) but never shrinks below its content
+        # (a mid-grow window clips it instead of squeezing the popup up into the search bar).
+        self._card.setFixedHeight(max(self._content_height, window_height - self._MARGIN * 2))
+
     def _set_height_preserving_pos(self, height: int) -> None:
         pos = self.pos()
+        self._fit_card(height)
         self.setFixedHeight(height)
         if self.pos() != pos:
             self.move(pos)
@@ -932,9 +1098,11 @@ class MainWindow(QWidget):
             elif self._drag_pos is not None:
                 if event_type == QEvent.Type.MouseMove:
                     mouse_event = cast("QMouseEvent", event)
-                    self.move(mouse_event.globalPosition().toPoint() - self._drag_pos)
-                    return True
-                if event_type == QEvent.Type.MouseButtonRelease:
+                    # Drag only while the button is held, so a stale offset can't fling the window on hover.
+                    if mouse_event.buttons() & Qt.MouseButton.LeftButton:
+                        self.move(mouse_event.globalPosition().toPoint() - self._drag_pos)
+                        return True
+                elif event_type == QEvent.Type.MouseButtonRelease:
                     self._drag_pos = None
                     return True
         return super().eventFilter(watched, event)
@@ -969,6 +1137,8 @@ class MainWindow(QWidget):
             case Qt.Key.Key_F1:
                 self._toggle_help()
             case Qt.Key.Key_F2:
+                self._toggle_settings()
+            case Qt.Key.Key_F3:
                 self._toggle_donate()
             case _:
                 super().keyPressEvent(event)
@@ -1011,19 +1181,22 @@ class MainWindow(QWidget):
     # -- search lifecycle --
 
     def _on_text_changed(self, text: str) -> None:
-        self._help_popup.hide()
-        self._donate_popup.hide()
+        popup_dismissed = self._any_popup_visible()
+        self._hide_all_popups()
         if not text.strip():
             self._debounce_timer.stop()
             self._stop_search()
             self._stop_searching_animation()
             self._result_model.clear()
             self._status_label.clear()
-            self._sync_height()
+            self._sync_height(animate=popup_dismissed)
             return
         self._stop_search()
         self._start_searching_animation()
         self._debounce_timer.start()
+        if popup_dismissed:
+            self._result_model.clear()
+            self._sync_height(animate=True)
 
     def _start_search_immediate(self) -> None:
         self._debounce_timer.stop()
@@ -1068,7 +1241,7 @@ class MainWindow(QWidget):
         self._stop_searching_animation()
         self._result_model.add_batch(results)
         self._status_label.setText(self._format_count(self._result_model.rowCount()))
-        if self._help_popup.isHidden() and self._donate_popup.isHidden():
+        if not self._any_popup_visible():
             self._sync_height()
 
     def _add_result(
@@ -1092,7 +1265,7 @@ class MainWindow(QWidget):
         self._stop_searching_animation()
         count = self._result_model.rowCount()
         self._status_label.setText("no results" if count == 0 else self._format_count(count))
-        if self._help_popup.isHidden() and self._donate_popup.isHidden():
+        if not self._any_popup_visible():
             self._sync_height()
 
     # -- searching animation --
@@ -1121,10 +1294,11 @@ class MainWindow(QWidget):
         if not index.isValid():
             return
         path = self._result_model.path_at(index.row())
+        is_dir = index.data(_IS_DIR_ROLE)
         menu = QMenu(self)
         file_icon = QIcon(self._delegate.file_icon)
         folder_icon = QIcon(self._delegate.folder_icon)
-        act_open = QAction(file_icon, "Open file", self)
+        act_open = QAction(folder_icon if is_dir else file_icon, "Open folder" if is_dir else "Open file", self)
         act_open.triggered.connect(lambda: self._open_file_by_path(path))
         act_folder = QAction(folder_icon, "Open containing folder", self)
         act_folder.triggered.connect(lambda: self._open_folder(path))
@@ -1184,38 +1358,40 @@ class MainWindow(QWidget):
     def _toggle_help(self) -> None:
         was_hidden = self._help_popup.isHidden()
         self._donate_popup.hide()
+        self._settings_popup.hide()
         self._help_popup.setVisible(was_hidden)
         self._sync_height(animate=was_hidden)
-        if was_hidden:
-            self._help_hide_timer.start()
-        else:
-            self._help_hide_timer.stop()
 
     def _toggle_donate(self) -> None:
         was_hidden = self._donate_popup.isHidden()
         self._help_popup.hide()
+        self._settings_popup.hide()
         self._donate_popup.setVisible(was_hidden)
         self._sync_height(animate=was_hidden)
-        if was_hidden:
-            self._help_hide_timer.start()
-        else:
-            self._help_hide_timer.stop()
+
+    def _toggle_settings(self) -> None:
+        was_hidden = self._settings_popup.isHidden()
+        self._help_popup.hide()
+        self._donate_popup.hide()
+        self._settings_popup.setVisible(was_hidden)
+        self._sync_height(animate=was_hidden)
+
+    def _any_popup_visible(self) -> bool:
+        return any(not popup.isHidden() for popup in self._popups)
+
+    def _hide_all_popups(self) -> None:
+        for popup in self._popups:
+            popup.hide()
 
     def _hide_popups(self) -> None:
-        changed = False
-        if not self._help_popup.isHidden():
-            self._help_popup.hide()
-            changed = True
-        if not self._donate_popup.isHidden():
-            self._donate_popup.hide()
-            changed = True
-        if changed:
+        if self._any_popup_visible():
+            self._hide_all_popups()
             self._sync_height()
 
     # -- system tray --
 
     def _build_tray(self) -> QSystemTrayIcon:
-        tray = QSystemTrayIcon(self._make_app_icon(self._theme), self)
+        tray = QSystemTrayIcon(self._make_app_icon(self._icon_color()), self)
         tray.setToolTip("Seekbar")
         # parent the menu to the window so it inherits the cascaded QMenu stylesheet;
         # a parentless top-level QMenu is not reliably styled by the native Windows 11 menu backend
