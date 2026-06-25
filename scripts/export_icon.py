@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPen, Qt
 
-ICON_COLOR = "#BB86FC"
+ICON_COLOR = "#5CD0C4"
 ICON_SIZES = (16, 32, 48, 256)
 # In an ICO directory entry width/height are single bytes; the value 0 encodes a 256 px dimension.
 ICO_DIMENSION_LIMIT = 256
@@ -21,11 +21,11 @@ def render_icon(size: int, color_hex: str) -> QImage:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     scale = size / 32.0
     color = QColor(color_hex)
-    painter.setPen(QPen(color, 2.0 * scale))
+    painter.setPen(QPen(color, 3.4 * scale))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     cx, cy, radius = 12.0 * scale, 12.0 * scale, 8.0 * scale
     painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
-    painter.setPen(QPen(color, 2.5 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    painter.setPen(QPen(color, 4.0 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
     handle_x, handle_y = cx + radius * 0.707, cy + radius * 0.707
     painter.drawLine(int(handle_x), int(handle_y), int(handle_x + 7 * scale), int(handle_y + 7 * scale))
     painter.end()
