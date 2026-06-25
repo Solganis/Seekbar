@@ -10,8 +10,8 @@
   <a href="https://github.com/Solganis/Seekbar/actions/workflows/ci.yml"><img src="https://github.com/Solganis/Seekbar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/github/Solganis/Seekbar"><img src="https://codecov.io/github/Solganis/Seekbar/graph/badge.svg" alt="codecov"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.14-blue.svg" alt="Python 3.14"></a>
-  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
+  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json" alt="ty"></a>
 </p>
 
