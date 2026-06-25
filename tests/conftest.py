@@ -38,7 +38,6 @@ def window(qtbot: QtBot) -> Iterator[MainWindow]:
     yield main_window
     main_window._debounce_timer.stop()
     main_window._searching_timer.stop()
-    main_window._help_hide_timer.stop()
     main_window._temp_status_timer.stop()
     main_window._height_anim.stop()
     main_window._tray.hide()

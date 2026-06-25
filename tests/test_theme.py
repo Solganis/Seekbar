@@ -6,7 +6,18 @@ from assertpy2 import assert_that
 from PySide6.QtCore import Qt
 
 import seekbar.theme
-from seekbar.theme import DARK_THEME, LIGHT_THEME, Theme, ThemeMode, contrast_ratio, resolve_theme
+from seekbar.theme import (
+    ACCENTS,
+    DARK_THEME,
+    DEFAULT_ACCENT,
+    LIGHT_THEME,
+    Theme,
+    ThemeMode,
+    TrayIconMode,
+    contrast_ratio,
+    is_dark,
+    resolve_theme,
+)
 
 # noinspection PyProtectedMember
 _linearize = seekbar.theme._linearize
@@ -41,10 +52,10 @@ class TestTheme:
         assert_that(DARK_THEME.surface_variant).is_equal_to("#2C2C2C")
         assert_that(DARK_THEME.on_surface).is_equal_to("#E0E0E0")
         assert_that(DARK_THEME.on_surface_variant).is_equal_to("#959595")
-        assert_that(DARK_THEME.primary).is_equal_to("#BB86FC")
+        assert_that(DARK_THEME.primary).is_equal_to("#9FB4C8")
         assert_that(DARK_THEME.outline).is_equal_to("#333333")
         assert_that(DARK_THEME.hover).is_equal_to("#252525")
-        assert_that(DARK_THEME.selected).is_equal_to("#332D41")
+        assert_that(DARK_THEME.selected).is_equal_to("#2E3640")
         assert_that(DARK_THEME.folder_color).is_equal_to("#B39B6E")
         assert_that(DARK_THEME.file_color).is_equal_to("#707070")
         assert_that(DARK_THEME.file_fold_color).is_equal_to("#808080")
@@ -54,10 +65,10 @@ class TestTheme:
         assert_that(LIGHT_THEME.surface_variant).is_equal_to("#E8E8E8")
         assert_that(LIGHT_THEME.on_surface).is_equal_to("#1C1C1C")
         assert_that(LIGHT_THEME.on_surface_variant).is_equal_to("#595959")
-        assert_that(LIGHT_THEME.primary).is_equal_to("#6750A4")
+        assert_that(LIGHT_THEME.primary).is_equal_to("#4A5A6E")
         assert_that(LIGHT_THEME.outline).is_equal_to("#C8C8C8")
         assert_that(LIGHT_THEME.hover).is_equal_to("#ECECEC")
-        assert_that(LIGHT_THEME.selected).is_equal_to("#E8DEF8")
+        assert_that(LIGHT_THEME.selected).is_equal_to("#DCE3EC")
         assert_that(LIGHT_THEME.folder_color).is_equal_to("#8B7340")
         assert_that(LIGHT_THEME.file_color).is_equal_to("#808080")
         assert_that(LIGHT_THEME.file_fold_color).is_equal_to("#909090")
@@ -79,26 +90,26 @@ class TestResolveTheme:
         return patch("seekbar.theme.QGuiApplication.instance", return_value=mock_app)
 
     def test_dark_mode(self):
-        assert_that(resolve_theme(ThemeMode.DARK)).is_same_as(DARK_THEME)
+        assert_that(resolve_theme(ThemeMode.DARK)).is_equal_to(DARK_THEME)
 
     def test_light_mode(self):
-        assert_that(resolve_theme(ThemeMode.LIGHT)).is_same_as(LIGHT_THEME)
+        assert_that(resolve_theme(ThemeMode.LIGHT)).is_equal_to(LIGHT_THEME)
 
     def test_auto_light_system(self):
         with self._patch_scheme(Qt.ColorScheme.Light):
-            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(LIGHT_THEME)
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_equal_to(LIGHT_THEME)
 
     def test_auto_dark_system(self):
         with self._patch_scheme(Qt.ColorScheme.Dark):
-            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_equal_to(DARK_THEME)
 
     def test_auto_unknown_system(self):
         with self._patch_scheme(Qt.ColorScheme.Unknown):
-            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_equal_to(DARK_THEME)
 
     def test_auto_no_app(self):
         with patch("seekbar.theme.QGuiApplication.instance", return_value=None):
-            assert_that(resolve_theme(ThemeMode.AUTO)).is_same_as(DARK_THEME)
+            assert_that(resolve_theme(ThemeMode.AUTO)).is_equal_to(DARK_THEME)
 
 
 class TestLinearize:
@@ -135,6 +146,54 @@ class TestContrastRatio:
 
     def test_known_boundary(self):
         assert_that(contrast_ratio("#767676", "#FFFFFF")).is_close_to(4.54, 0.1)
+
+
+class TestIsDark:
+    def test_dark_theme(self):
+        assert_that(is_dark(DARK_THEME)).is_true()
+
+    def test_light_theme(self):
+        assert_that(is_dark(LIGHT_THEME)).is_false()
+
+
+class TestTrayIconMode:
+    def test_values(self):
+        assert_that([mode.value for mode in TrayIconMode]).is_equal_to(["auto", "white", "black", "accent"])
+
+    def test_from_string(self):
+        assert_that(TrayIconMode("accent")).is_equal_to(TrayIconMode.ACCENT)
+
+
+class TestAccentPresets:
+    def test_default_present(self):
+        assert_that(ACCENTS).contains_key(DEFAULT_ACCENT)
+
+    def test_default_mirrors_base_themes(self):
+        assert_that(resolve_theme(ThemeMode.DARK, DEFAULT_ACCENT)).is_equal_to(DARK_THEME)
+        assert_that(resolve_theme(ThemeMode.LIGHT, DEFAULT_ACCENT)).is_equal_to(LIGHT_THEME)
+
+    def test_applies_accent_dark(self):
+        theme = resolve_theme(ThemeMode.DARK, "blue")
+        assert_that(theme.primary).is_equal_to(ACCENTS["blue"].primary_dark)
+        assert_that(theme.selected).is_equal_to(ACCENTS["blue"].selected_dark)
+
+    def test_applies_accent_light(self):
+        theme = resolve_theme(ThemeMode.LIGHT, "blue")
+        assert_that(theme.primary).is_equal_to(ACCENTS["blue"].primary_light)
+        assert_that(theme.selected).is_equal_to(ACCENTS["blue"].selected_light)
+
+    def test_unknown_accent_falls_back_to_default(self):
+        theme = resolve_theme(ThemeMode.DARK, "does-not-exist")
+        assert_that(theme.primary).is_equal_to(ACCENTS[DEFAULT_ACCENT].primary_dark)
+
+    @pytest.mark.parametrize("accent_id", list(ACCENTS))
+    @pytest.mark.parametrize("mode", [ThemeMode.DARK, ThemeMode.LIGHT], ids=["dark", "light"])
+    def test_selection_contrast(self, accent_id: str, mode: ThemeMode):
+        theme = resolve_theme(mode, accent_id)
+        # Result-row name text keeps its on_surface colour over the selected background.
+        assert_that(contrast_ratio(theme.on_surface, theme.selected)).is_greater_than_or_equal_to(4.5)
+        # Search-bar selection draws surface-coloured glyphs over the primary background.
+        assert_that(contrast_ratio(theme.surface, theme.primary)).is_greater_than_or_equal_to(4.5)
 
 
 class TestWcagContrast:
