@@ -51,10 +51,12 @@
 <tr><td><kbd>Esc</kbd></td><td>Clear search text, then close window</td></tr>
 <tr><td><kbd>Ctrl+T</kbd></td><td>Cycle theme (auto / light / dark)</td></tr>
 <tr><td><kbd>Ctrl+Q</kbd></td><td>Quit application</td></tr>
+<tr><td><kbd>Alt</kbd> + drag</td><td>Move window</td></tr>
 <tr><td><kbd>Up</kbd> / <kbd>Down</kbd></td><td>Navigate results</td></tr>
 <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Jump by page</td></tr>
 <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>Jump to first / last result</td></tr>
-<tr><td><kbd>F2</kbd></td><td>Donate links</td></tr>
+<tr><td><kbd>F2</kbd></td><td>Settings (accent color, tray icon)</td></tr>
+<tr><td><kbd>F3</kbd></td><td>Donate links</td></tr>
 </table>
 </div>
 
