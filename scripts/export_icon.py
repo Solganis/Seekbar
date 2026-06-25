@@ -9,6 +9,8 @@ from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPen, Qt
 
 ICON_COLOR = "#BB86FC"
 ICON_SIZES = (16, 32, 48, 256)
+# In an ICO directory entry width/height are single bytes; the value 0 encodes a 256 px dimension.
+ICO_DIMENSION_LIMIT = 256
 
 
 def render_icon(size: int, color_hex: str) -> QImage:
@@ -51,19 +53,17 @@ def write_ico(images: list[QImage], output_path: Path) -> None:
 
     for image in images:
         png_data = image_to_png_bytes(image)
-        width = 0 if image.width() >= 256 else image.width()
-        height = 0 if image.height() >= 256 else image.height()
+        width = 0 if image.width() >= ICO_DIMENSION_LIMIT else image.width()
+        height = 0 if image.height() >= ICO_DIMENSION_LIMIT else image.height()
         entry = struct.pack("<BBBBHHII", width, height, 0, 0, 1, 32, len(png_data), data_offset)
         directory_entries.append(entry)
         png_payloads.append(png_data)
         data_offset += len(png_data)
 
-    with open(output_path, "wb") as ico_file:
+    with output_path.open("wb") as ico_file:
         ico_file.write(header)
-        for entry in directory_entries:
-            ico_file.write(entry)
-        for payload in png_payloads:
-            ico_file.write(payload)
+        ico_file.writelines(directory_entries)
+        ico_file.writelines(png_payloads)
 
 
 def main() -> None:

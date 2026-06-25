@@ -29,6 +29,8 @@ select = ["ALL"]
 ignore = ["D", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
+# scripts are standalone dev tools: not an importable package (INP001) and may print to stdout (T201)
+"scripts/**/*.py" = ["INP001", "T201"]
 "src/seekbar/app.py" = ["S603", "S607"]
 "tests/**/*.py" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "TC002", "PLW0108", "I001", "FBT"]
 
