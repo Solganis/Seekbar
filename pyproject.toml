@@ -45,6 +45,7 @@ qt_api = "pyside6"
 testpaths = ["tests"]
 
 [tool.coverage.run]
+branch = true
 source = ["seekbar"]
 omit = [
     "*/__main__.py",
