@@ -1233,6 +1233,14 @@ class MainWindow(QWidget):
                 ):
                     self._start_drag(mouse_event)
                     return True
+            elif event_type == QEvent.Type.KeyPress:
+                key_event = cast("QKeyEvent", event)
+                # A focused QLineEdit consumes Home/End for its text cursor, so they never reach
+                # keyPressEvent. Reroute them to result navigation (like Up/Down/PageUp/PageDown) while
+                # results are listed; with none, they fall through to the line edit's text cursor.
+                if key_event.key() in (Qt.Key.Key_Home, Qt.Key.Key_End) and self._result_model.rowCount() > 0:
+                    self._handle_navigation(key_event.key())
+                    return True
             elif self._drag_pos is not None:
                 if event_type == QEvent.Type.MouseMove:
                     mouse_event = cast("QMouseEvent", event)
