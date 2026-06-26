@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
+    QSignalBlocker,
     QSize,
     Qt,
     QTimer,
@@ -83,7 +84,7 @@ else:  # pragma: no cover - non-Windows/macOS fallback
     _hotkey_mac = None
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent
 
@@ -318,6 +319,7 @@ class MainWindow(QWidget):
         grid.setVerticalSpacing(10)
         grid.addWidget(QLabel("Accent"), 0, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(QLabel("Tray icon"), 1, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        grid.addWidget(QLabel("Autostart"), 2, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         accent_row = QHBoxLayout()
         accent_row.setSpacing(8)
@@ -334,20 +336,15 @@ class MainWindow(QWidget):
             self._accent_buttons[accent_id] = button
         grid.addLayout(accent_row, 0, 1)
 
-        tray_row = QHBoxLayout()
-        tray_row.setSpacing(8)
-        self._tray_group = QButtonGroup(panel)
-        self._tray_buttons: dict[TrayIconMode, QPushButton] = {}
-        for mode in TrayIconMode:
-            button = QPushButton(mode.value.capitalize())
-            button.setObjectName("trayButton")
-            button.setCheckable(True)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda *_args, chosen=mode: self._set_tray_icon_mode(chosen))
-            self._tray_group.addButton(button)
-            tray_row.addWidget(button)
-            self._tray_buttons[mode] = button
+        tray_row, self._tray_group, self._tray_buttons = self._build_segmented_row(
+            panel, [(mode, mode.value.capitalize()) for mode in TrayIconMode], self._set_tray_icon_mode
+        )
         grid.addLayout(tray_row, 1, 1)
+
+        autostart_row, self._autostart_group, self._autostart_buttons = self._build_segmented_row(
+            panel, [(True, "On"), (False, "Off")], self._set_autostart
+        )
+        grid.addLayout(autostart_row, 2, 1)
 
         outer.addStretch()
         outer.addLayout(grid)
@@ -356,6 +353,24 @@ class MainWindow(QWidget):
         self._refresh_settings()
         panel.hide()
         return panel
+
+    def _build_segmented_row[K](
+        self, panel: QFrame, items: Sequence[tuple[K, str]], on_click: Callable[[K], None]
+    ) -> tuple[QHBoxLayout, QButtonGroup, dict[K, QPushButton]]:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        group = QButtonGroup(panel)
+        buttons: dict[K, QPushButton] = {}
+        for key, text in items:
+            button = QPushButton(text)
+            button.setObjectName("trayButton")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda *_args, chosen=key: on_click(chosen))
+            group.addButton(button)
+            row.addWidget(button)
+            buttons[key] = button
+        return row, group, buttons
 
     def _refresh_settings(self) -> None:
         dark = is_dark(self._theme)
@@ -367,6 +382,9 @@ class MainWindow(QWidget):
             button.setChecked(accent_id == self._accent_id)
         for mode, button in self._tray_buttons.items():
             button.setChecked(mode == self._tray_icon_mode)
+        enabled = autostart.is_enabled()
+        for state, button in self._autostart_buttons.items():
+            button.setChecked(state == enabled)
 
     def _assemble_layout(self) -> None:
         top_row = QHBoxLayout()
@@ -813,9 +831,17 @@ class MainWindow(QWidget):
         tray.show()
         return tray
 
-    @staticmethod
-    def _on_autostart_toggled(enabled: bool) -> None:  # noqa: FBT001 - Qt toggled(bool) signal slot
+    def _on_autostart_toggled(self, enabled: bool) -> None:  # noqa: FBT001 - Qt toggled(bool) signal slot
+        self._set_autostart(enabled)
+
+    def _set_autostart(self, enabled: bool) -> None:  # noqa: FBT001 - simple on/off toggle
         autostart.set_enabled(enabled)
+        # Mirror onto the tray checkbox without re-emitting toggled, so the two controls can't loop.
+        blocker = QSignalBlocker(self._autostart_action)
+        self._autostart_action.setChecked(enabled)
+        blocker.unblock()
+        for state, button in self._autostart_buttons.items():
+            button.setChecked(state == enabled)
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:

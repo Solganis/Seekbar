@@ -1203,6 +1203,33 @@ class TestSettings:
         assert_that(settings.load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
         assert_that(window._tray_buttons[TrayIconMode.WHITE].isChecked()).is_true()
 
+    def test_autostart_buttons_built(self, window: MainWindow):
+        assert_that(set(window._autostart_buttons)).is_equal_to({True, False})
+
+    def test_autostart_button_enables_and_syncs_tray(self, window: MainWindow):
+        with patch.object(seekbar.app.autostart, "set_enabled") as mock_set:
+            window._autostart_buttons[True].click()
+        mock_set.assert_called_once_with(True)
+        assert_that(window._autostart_action.isChecked()).is_true()
+        assert_that(window._autostart_buttons[True].isChecked()).is_true()
+
+    def test_autostart_button_disables_and_syncs_tray(self, window: MainWindow):
+        with patch.object(seekbar.app.autostart, "set_enabled") as mock_set:
+            window._autostart_buttons[False].click()
+        mock_set.assert_called_once_with(False)
+        assert_that(window._autostart_action.isChecked()).is_false()
+        assert_that(window._autostart_buttons[False].isChecked()).is_true()
+
+    def test_tray_toggle_syncs_settings_buttons(self, window: MainWindow):
+        # The reverse direction: toggling the tray checkbox must update the F2 segmented buttons.
+        with patch.object(seekbar.app.autostart, "set_enabled"):
+            window._autostart_action.setChecked(True)
+            assert_that(window._autostart_buttons[True].isChecked()).is_true()
+            assert_that(window._autostart_buttons[False].isChecked()).is_false()
+            window._autostart_action.setChecked(False)
+            assert_that(window._autostart_buttons[False].isChecked()).is_true()
+            assert_that(window._autostart_buttons[True].isChecked()).is_false()
+
     def test_accent_swatch_style_matches_theme(self, window: MainWindow):
         window._set_theme(LIGHT_THEME)
         qss = window._accent_buttons["blue"].styleSheet()
