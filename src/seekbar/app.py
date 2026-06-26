@@ -12,7 +12,6 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
-    QSettings,
     QSize,
     Qt,
     QTimer,
@@ -26,10 +25,7 @@ from PySide6.QtGui import (
     QFont,
     QFontMetrics,
     QIcon,
-    QPainter,
     QPalette,
-    QPen,
-    QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -48,13 +44,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seekbar import __version__, autostart
-from seekbar.constants import _FONT_FAMILY, _IS_DIR_ROLE, SETTINGS_APP, SETTINGS_ORG
+from seekbar import __version__, autostart, icons, settings, styles
+from seekbar.constants import _FONT_FAMILY, _IS_DIR_ROLE
 from seekbar.delegate import _ResultDelegate
 from seekbar.model import _RecencyStore, _ResultModel
 from seekbar.search import MAX_RESULTS, SearchWorker
 from seekbar.single_instance import _SINGLE_INSTANCE_KEY, _SingleInstanceGuard
-from seekbar.theme import ACCENTS, DEFAULT_ACCENT, Theme, ThemeMode, TrayIconMode, is_dark, resolve_theme
+from seekbar.theme import ACCENTS, Theme, ThemeMode, TrayIconMode, is_dark, resolve_theme
 
 if sys.platform == "win32":  # pragma: no cover - Windows-only, not reachable off win32
     import ctypes.wintypes
@@ -137,11 +133,11 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(620)
 
-        self._theme_mode = self._load_theme_mode()
-        self._accent_id = self._load_accent()
-        self._tray_icon_mode = self._load_tray_icon_mode()
+        self._theme_mode = settings.load_theme_mode()
+        self._accent_id = settings.load_accent()
+        self._tray_icon_mode = settings.load_tray_icon_mode()
         self._theme = resolve_theme(self._theme_mode, self._accent_id)
-        self.setWindowIcon(self._make_app_icon(self._icon_color()))
+        self.setWindowIcon(icons.make_app_icon(icons.icon_color(self._tray_icon_mode, self._theme)))
 
         search_font = QFont(_FONT_FAMILY, 11)
         self._search_height = QFontMetrics(search_font).height() * 2 + 10
@@ -174,7 +170,7 @@ class MainWindow(QWidget):
         self._tray = self._build_tray()
         self._init_hotkey()
 
-        saved_pos = self._load_window_position()
+        saved_pos = settings.load_window_position()
         if saved_pos:
             self.move(saved_pos)
         else:
@@ -203,79 +199,14 @@ class MainWindow(QWidget):
         self._height_anim.valueChanged.connect(self._apply_animated_height)
         self._height_anim.finished.connect(self._finalize_height)
 
-    @staticmethod
-    def _load_theme_mode() -> ThemeMode:
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        raw = settings.value("theme_mode", ThemeMode.AUTO.value)
-        try:
-            return ThemeMode(raw)
-        except ValueError:
-            return ThemeMode.AUTO
-
-    @staticmethod
-    def _save_theme_mode(mode: ThemeMode) -> None:
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("theme_mode", mode.value)
-
-    @staticmethod
-    def _load_accent() -> str:
-        raw = QSettings(SETTINGS_ORG, SETTINGS_APP).value("accent", DEFAULT_ACCENT)
-        return raw if isinstance(raw, str) and raw in ACCENTS else DEFAULT_ACCENT
-
-    @staticmethod
-    def _save_accent(accent_id: str) -> None:
-        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("accent", accent_id)
-
-    @staticmethod
-    def _load_tray_icon_mode() -> TrayIconMode:
-        raw = QSettings(SETTINGS_ORG, SETTINGS_APP).value("tray_icon_mode", TrayIconMode.AUTO.value)
-        try:
-            return TrayIconMode(raw)
-        except ValueError:
-            return TrayIconMode.AUTO
-
-    @staticmethod
-    def _save_tray_icon_mode(mode: TrayIconMode) -> None:
-        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("tray_icon_mode", mode.value)
-
-    def _icon_color(self) -> str:
-        match self._tray_icon_mode:
-            case TrayIconMode.WHITE:
-                return "#FFFFFF"
-            case TrayIconMode.BLACK:
-                return "#000000"
-            case TrayIconMode.ACCENT:
-                return self._theme.primary
-            case TrayIconMode.AUTO:  # pragma: no branch - exhaustive over TrayIconMode, no-match arm unreachable
-                return self._theme.on_surface
-
-    @staticmethod
-    def _load_window_position() -> QPoint | None:
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        pos_x = settings.value("window_x")
-        pos_y = settings.value("window_y")
-        if pos_x is None or pos_y is None:
-            return None
-        point = QPoint(int(pos_x), int(pos_y))
-        for screen in QApplication.screens():
-            if screen.geometry().contains(point):
-                return point
-        return None
-
-    @staticmethod
-    def _save_window_position(pos: QPoint) -> None:
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("window_x", pos.x())
-        settings.setValue("window_y", pos.y())
-
     def _set_theme(self, theme: Theme) -> None:
         self._theme = theme
         self._apply_styles()
         self._update_palette()
-        icon = self._make_app_icon(self._icon_color())
+        icon = icons.make_app_icon(icons.icon_color(self._tray_icon_mode, self._theme))
         self.setWindowIcon(icon)
         self._tray.setIcon(icon)
-        self._close_button.setIcon(self._make_close_icon(theme))
+        self._close_button.setIcon(icons.make_close_icon(theme))
         self._help_popup.setText(self._help_html())
         self._donate_popup.setText(self._donate_html())
         self._refresh_settings()
@@ -290,7 +221,7 @@ class MainWindow(QWidget):
                 self._theme_mode = ThemeMode.DARK
             case ThemeMode.DARK:  # pragma: no branch - exhaustive over ThemeMode, no-match arm unreachable
                 self._theme_mode = ThemeMode.AUTO
-        self._save_theme_mode(self._theme_mode)
+        settings.save_theme_mode(self._theme_mode)
         self._set_theme(resolve_theme(self._theme_mode, self._accent_id))
 
     def _on_system_theme_changed(self, _scheme: Qt.ColorScheme) -> None:
@@ -301,15 +232,15 @@ class MainWindow(QWidget):
         if accent_id == self._accent_id:
             return
         self._accent_id = accent_id
-        self._save_accent(accent_id)
+        settings.save_accent(accent_id)
         self._set_theme(resolve_theme(self._theme_mode, accent_id))
 
     def _set_tray_icon_mode(self, mode: TrayIconMode) -> None:
         if mode == self._tray_icon_mode:
             return
         self._tray_icon_mode = mode
-        self._save_tray_icon_mode(mode)
-        icon = self._make_app_icon(self._icon_color())
+        settings.save_tray_icon_mode(mode)
+        icon = icons.make_app_icon(icons.icon_color(self._tray_icon_mode, self._theme))
         self.setWindowIcon(icon)
         self._tray.setIcon(icon)
         self._refresh_settings()
@@ -350,60 +281,11 @@ class MainWindow(QWidget):
         button.setAccessibleName("Close")
         button.setToolTip("")
         button.setFixedSize(self._search_height - 12, self._search_height - 12)
-        button.setIcon(self._make_close_icon(self._theme))
+        button.setIcon(icons.make_close_icon(self._theme))
         button.setIconSize(QSize(14, 14))
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(self.close)
         return button
-
-    @staticmethod
-    def _make_app_icon(color_hex: str) -> QIcon:
-        icon = QIcon()
-        for size in (16, 32, 48):
-            pixmap = QPixmap(size, size)
-            pixmap.fill(QColor(0, 0, 0, 0))
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            scale = size / 32.0
-            color = QColor(color_hex)
-            painter.setPen(QPen(color, 3.4 * scale))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            cx, cy, radius = 12.0 * scale, 12.0 * scale, 8.0 * scale
-            painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
-            painter.setPen(QPen(color, 4.0 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            hx, hy = cx + radius * 0.707, cy + radius * 0.707
-            painter.drawLine(int(hx), int(hy), int(hx + 7 * scale), int(hy + 7 * scale))
-            painter.end()
-            icon.addPixmap(pixmap)
-        return icon
-
-    @staticmethod
-    def _tint_icon(icon: QIcon, color: str, size: int = 16) -> QIcon:
-        source = icon.pixmap(QSize(size, size))
-        if source.isNull():
-            return icon
-        tinted = QPixmap(source.size())
-        tinted.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(tinted)
-        painter.drawPixmap(0, 0, source)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-        painter.fillRect(tinted.rect(), QColor(color))
-        painter.end()
-        return QIcon(tinted)
-
-    @staticmethod
-    def _make_close_icon(theme: Theme) -> QIcon:
-        size = 14
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(theme.on_surface_variant), 1.5))
-        margin = 3
-        painter.drawLine(margin, margin, size - margin, size - margin)
-        painter.drawLine(size - margin, margin, margin, size - margin)
-        painter.end()
-        return QIcon(pixmap)
 
     # instance method by design - groups with the other _build_* widget builders
     # noinspection PyMethodMayBeStatic
@@ -565,27 +447,13 @@ class MainWindow(QWidget):
         panel.hide()
         return panel
 
-    def _accent_swatch_qss(self, selected: str, primary: str) -> str:
-        # Two-tone chip: left half is the result-row fill, right half is the bar/scroll accent.
-        theme = self._theme
-        return f"""
-            QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {selected}, stop:0.5 {selected}, stop:0.5 {primary}, stop:1 {primary});
-                border: 2px solid transparent;
-                border-radius: 7px;
-            }}
-            QPushButton:hover {{ border: 2px solid {theme.on_surface_variant}; }}
-            QPushButton:checked {{ border: 2px solid {theme.on_surface}; }}
-        """
-
     def _refresh_settings(self) -> None:
         dark = is_dark(self._theme)
         for accent_id, button in self._accent_buttons.items():
             accent = ACCENTS[accent_id]
             primary_color = accent.primary_dark if dark else accent.primary_light
             selected_color = accent.selected_dark if dark else accent.selected_light
-            button.setStyleSheet(self._accent_swatch_qss(selected_color, primary_color))
+            button.setStyleSheet(styles.accent_swatch_qss(self._theme, selected_color, primary_color))
             button.setChecked(accent_id == self._accent_id)
         for mode, button in self._tray_buttons.items():
             button.setChecked(mode == self._tray_icon_mode)
@@ -617,135 +485,14 @@ class MainWindow(QWidget):
         outer.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         outer.addWidget(self._card, alignment=Qt.AlignmentFlag.AlignTop)
 
-    @staticmethod
-    def _menu_qss(theme: Theme) -> str:
-        return f"""
-            QMenu {{
-                background-color: {theme.surface_variant};
-                color: {theme.on_surface};
-                border: 1px solid {theme.outline};
-                border-radius: 8px;
-                padding: 4px;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 9pt;
-            }}
-            QMenu::item {{
-                padding: 8px 16px;
-                border-radius: 4px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme.hover};
-            }}
-        """
-
     def _apply_styles(self) -> None:
         theme = self._theme
-        menu_qss = self._menu_qss(theme)
+        menu = styles.menu_qss(theme)
         if hasattr(self, "_tray"):
             tray_menu = self._tray.contextMenu()
             if tray_menu is not None:
-                tray_menu.setStyleSheet(menu_qss)
-        self.setStyleSheet(f"""
-            #card {{
-                background-color: {theme.surface};
-                border: 1px solid {theme.outline};
-                border-radius: {self._RADIUS}px;
-            }}
-            #searchInput {{
-                background-color: transparent;
-                border: none;
-                color: {theme.on_surface};
-                font-size: 11pt;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                padding: 0 16px;
-                selection-background-color: {theme.primary};
-                selection-color: {theme.surface};
-            }}
-            #separator {{
-                background-color: {theme.outline};
-                border: none;
-            }}
-            #statusLabel {{
-                color: {theme.on_surface_variant};
-                font-size: 8pt;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                padding: 0;
-                background-color: transparent;
-            }}
-            #closeButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: {(self._search_height - 12) // 2}px;
-            }}
-            #closeButton:hover {{
-                background-color: {theme.hover};
-            }}
-            #closeButton:pressed {{
-                background-color: {theme.outline};
-            }}
-            #resultList {{
-                background-color: transparent;
-                border: none;
-                outline: none;
-            }}
-            #resultList::item {{
-                border: none;
-                padding: 0;
-            }}
-            QScrollBar:vertical {{
-                background: transparent;
-                width: 14px;
-                margin: 4px 2px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {theme.outline};
-                border-radius: 5px;
-                min-height: 24px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: {theme.on_surface_variant};
-            }}
-            QScrollBar::handle:vertical:pressed {{
-                background: {theme.primary};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-            {menu_qss}
-            #helpPopup, #donatePopup {{
-                background-color: {theme.surface_variant};
-                color: {theme.on_surface};
-                border: none;
-                padding: 12px 16px;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 9pt;
-            }}
-            #settingsPopup {{
-                background-color: {theme.surface_variant};
-                border: none;
-            }}
-            #settingsPopup QLabel {{
-                color: {theme.on_surface_variant};
-                background: transparent;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 9pt;
-            }}
-            #settingsPopup QPushButton#trayButton {{
-                background-color: {theme.outline};
-                color: {theme.on_surface};
-                border: none;
-                border-radius: 6px;
-                padding: 3px 12px;
-                font-family: "{_FONT_FAMILY}", sans-serif;
-                font-size: 8pt;
-            }}
-            #settingsPopup QPushButton#trayButton:hover {{
-                background-color: {theme.hover};
-            }}
-            #settingsPopup QPushButton#trayButton:checked {{
-                background-color: {theme.primary};
-                color: {theme.surface};
-            }}
-        """)
+                tray_menu.setStyleSheet(menu)
+        self.setStyleSheet(styles.window_qss(theme, self._RADIUS, self._search_height, menu))
 
     def _sync_height(self, *, animate: bool = False) -> None:
         self._height_anim.stop()
@@ -963,11 +710,11 @@ class MainWindow(QWidget):
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._tray.isVisible():
-            self._save_window_position(self.pos())
+            settings.save_window_position(self.pos())
             event.ignore()
             self.hide()
         else:
-            self._save_window_position(self.pos())
+            settings.save_window_position(self.pos())
             self._stop_search()
             super().closeEvent(event)
 
@@ -1051,12 +798,12 @@ class MainWindow(QWidget):
     def _show_input_context_menu(self, pos: QPoint) -> None:
         menu = self._search_input.createStandardContextMenu()
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.setStyleSheet(self._menu_qss(self._theme))
+        menu.setStyleSheet(styles.menu_qss(self._theme))
         on_surface = self._theme.on_surface
         for action in menu.actions():
             icon = action.icon()
             if not icon.isNull():
-                action.setIcon(self._tint_icon(icon, on_surface))
+                action.setIcon(icons.tint_icon(icon, on_surface))
         menu.popup(self._search_input.mapToGlobal(pos))
 
     def _open_index(self, index: QModelIndex) -> None:
@@ -1133,12 +880,12 @@ class MainWindow(QWidget):
     # -- system tray --
 
     def _build_tray(self) -> QSystemTrayIcon:
-        tray = QSystemTrayIcon(self._make_app_icon(self._icon_color()), self)
+        tray = QSystemTrayIcon(icons.make_app_icon(icons.icon_color(self._tray_icon_mode, self._theme)), self)
         tray.setToolTip("Seekbar")
         # parent the menu to the window so it inherits the cascaded QMenu stylesheet;
         # a parentless top-level QMenu is not reliably styled by the native Windows 11 menu backend
         menu = QMenu(self)
-        menu.setStyleSheet(self._menu_qss(self._theme))
+        menu.setStyleSheet(styles.menu_qss(self._theme))
         act_toggle = QAction("Show / Hide", self)
         act_toggle.triggered.connect(self._toggle_visibility)
         self._autostart_action = QAction("Launch at startup", self)
@@ -1182,7 +929,7 @@ class MainWindow(QWidget):
         self._search_input.selectAll()
 
     def _quit_app(self) -> None:
-        self._save_window_position(self.pos())
+        settings.save_window_position(self.pos())
         self._stop_search()
         if _hotkey is not None and self._hotkey_registered:  # pragma: no cover - Windows-only, not reachable off win32
             _hotkey.unregister_hotkey()

@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtCore import QSettings
 
-from seekbar.app import MainWindow, SETTINGS_APP, SETTINGS_ORG
+from seekbar.app import MainWindow
+from seekbar.constants import SETTINGS_APP, SETTINGS_ORG
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

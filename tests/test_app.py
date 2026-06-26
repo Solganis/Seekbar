@@ -29,6 +29,7 @@ from seekbar.constants import (
     _PARENT_ROLE,
     _system_font_family,
 )
+from seekbar import icons, settings
 from seekbar.filetypes import FileCategory
 from seekbar.model import _RecencyStore, _ResultModel, _basename_length
 from seekbar.search import MAX_RESULTS
@@ -577,23 +578,23 @@ class TestThemeSwitching:
 class TestThemePersistence:
     def test_cycle_saves_to_settings(self, window: MainWindow):
         window._cycle_theme()
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert_that(settings.value("theme_mode")).is_equal_to(ThemeMode.LIGHT.value)
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        assert_that(qsettings.value("theme_mode")).is_equal_to(ThemeMode.LIGHT.value)
 
-    def test_load_saved_mode(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("theme_mode", "dark")
-        loaded = window._load_theme_mode()
+    def test_load_saved_mode(self):
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("theme_mode", "dark")
+        loaded = settings.load_theme_mode()
         assert_that(loaded).is_equal_to(ThemeMode.DARK)
 
-    def test_load_invalid_mode_defaults_to_auto(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("theme_mode", "garbage")
-        loaded = window._load_theme_mode()
+    def test_load_invalid_mode_defaults_to_auto(self):
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("theme_mode", "garbage")
+        loaded = settings.load_theme_mode()
         assert_that(loaded).is_equal_to(ThemeMode.AUTO)
 
-    def test_load_missing_key_defaults_to_auto(self, window: MainWindow):
-        loaded = window._load_theme_mode()
+    def test_load_missing_key_defaults_to_auto(self):
+        loaded = settings.load_theme_mode()
         assert_that(loaded).is_equal_to(ThemeMode.AUTO)
 
 
@@ -620,40 +621,40 @@ class TestWindowPositionPersistence:
         window.show()
         window.move(QPoint(100, 200))
         window.close()
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert_that(settings.value("window_x")).is_equal_to(100)
-        assert_that(settings.value("window_y")).is_equal_to(200)
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        assert_that(qsettings.value("window_x")).is_equal_to(100)
+        assert_that(qsettings.value("window_y")).is_equal_to(200)
 
     def test_restores_saved_position(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         screen = window.screen().geometry()
         pos_x = screen.x() + 50
         pos_y = screen.y() + 50
-        settings.setValue("window_x", pos_x)
-        settings.setValue("window_y", pos_y)
-        loaded = window._load_window_position()
+        qsettings.setValue("window_x", pos_x)
+        qsettings.setValue("window_y", pos_y)
+        loaded = settings.load_window_position()
         assert_that(loaded).is_equal_to(QPoint(pos_x, pos_y))
 
     def test_window_uses_saved_position_on_init(self, qtbot: QtBot):
         screen = seekbar.app.QApplication.primaryScreen().geometry()
         pos_x = screen.x() + 75
         pos_y = screen.y() + 75
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("window_x", pos_x)
-        settings.setValue("window_y", pos_y)
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("window_x", pos_x)
+        qsettings.setValue("window_y", pos_y)
         fresh_window = seekbar.app.MainWindow()
         qtbot.addWidget(fresh_window)
         assert_that(fresh_window.pos()).is_equal_to(QPoint(pos_x, pos_y))
 
-    def test_fallback_on_offscreen_position(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("window_x", -99999)
-        settings.setValue("window_y", -99999)
-        loaded = window._load_window_position()
+    def test_fallback_on_offscreen_position(self):
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("window_x", -99999)
+        qsettings.setValue("window_y", -99999)
+        loaded = settings.load_window_position()
         assert_that(loaded).is_none()
 
-    def test_fallback_on_missing_position(self, window: MainWindow):
-        loaded = window._load_window_position()
+    def test_fallback_on_missing_position(self):
+        loaded = settings.load_window_position()
         assert_that(loaded).is_none()
 
 
@@ -678,16 +679,16 @@ class TestContextMenuIcons:
 
 
 class TestTintIcon:
-    def test_recolors_opaque_pixmap(self, window: MainWindow):
+    def test_recolors_opaque_pixmap(self):
         pixmap = QPixmap(16, 16)
         pixmap.fill(QColor("white"))
-        result = window._tint_icon(QIcon(pixmap), "#FF0000")
+        result = icons.tint_icon(QIcon(pixmap), "#FF0000")
         center = result.pixmap(QSize(16, 16)).toImage().pixelColor(8, 8)
         assert_that(center.name()).is_equal_to("#ff0000")
 
-    def test_null_icon_returned_unchanged(self, window: MainWindow):
+    def test_null_icon_returned_unchanged(self):
         empty = QIcon()
-        result = window._tint_icon(empty, "#FF0000")
+        result = icons.tint_icon(empty, "#FF0000")
         assert_that(result.isNull()).is_true()
 
 
@@ -1138,32 +1139,32 @@ class TestDonatePopup:
 
 
 class TestSettings:
-    def test_load_accent(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("accent", "blue")
-        assert_that(window._load_accent()).is_equal_to("blue")
-        settings.setValue("accent", "does-not-exist")
-        assert_that(window._load_accent()).is_equal_to(DEFAULT_ACCENT)
-        settings.setValue("accent", 123)
-        assert_that(window._load_accent()).is_equal_to(DEFAULT_ACCENT)
+    def test_load_accent(self):
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("accent", "blue")
+        assert_that(settings.load_accent()).is_equal_to("blue")
+        qsettings.setValue("accent", "does-not-exist")
+        assert_that(settings.load_accent()).is_equal_to(DEFAULT_ACCENT)
+        qsettings.setValue("accent", 123)
+        assert_that(settings.load_accent()).is_equal_to(DEFAULT_ACCENT)
 
-    def test_load_tray_icon_mode(self, window: MainWindow):
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        settings.setValue("tray_icon_mode", "white")
-        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
-        settings.setValue("tray_icon_mode", "bogus")
-        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.AUTO)
+    def test_load_tray_icon_mode(self):
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        qsettings.setValue("tray_icon_mode", "white")
+        assert_that(settings.load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
+        qsettings.setValue("tray_icon_mode", "bogus")
+        assert_that(settings.load_tray_icon_mode()).is_equal_to(TrayIconMode.AUTO)
 
     def test_icon_color_modes(self, window: MainWindow):
         window._theme = DARK_THEME
         window._tray_icon_mode = TrayIconMode.WHITE
-        assert_that(window._icon_color()).is_equal_to("#FFFFFF")
+        assert_that(icons.icon_color(window._tray_icon_mode, window._theme)).is_equal_to("#FFFFFF")
         window._tray_icon_mode = TrayIconMode.BLACK
-        assert_that(window._icon_color()).is_equal_to("#000000")
+        assert_that(icons.icon_color(window._tray_icon_mode, window._theme)).is_equal_to("#000000")
         window._tray_icon_mode = TrayIconMode.ACCENT
-        assert_that(window._icon_color()).is_equal_to(DARK_THEME.primary)
+        assert_that(icons.icon_color(window._tray_icon_mode, window._theme)).is_equal_to(DARK_THEME.primary)
         window._tray_icon_mode = TrayIconMode.AUTO
-        assert_that(window._icon_color()).is_equal_to(DARK_THEME.on_surface)
+        assert_that(icons.icon_color(window._tray_icon_mode, window._theme)).is_equal_to(DARK_THEME.on_surface)
 
     def test_set_accent_noop(self, window: MainWindow):
         window._set_accent(window._accent_id)
@@ -1191,7 +1192,7 @@ class TestSettings:
         window._accent_buttons["blue"].click()
         assert_that(window._accent_id).is_equal_to("blue")
         assert_that(window._theme.primary).is_equal_to(ACCENTS["blue"].primary_dark)
-        assert_that(window._load_accent()).is_equal_to("blue")
+        assert_that(settings.load_accent()).is_equal_to("blue")
         assert_that(window._accent_buttons["blue"].isChecked()).is_true()
 
     def test_tray_button_click_changes_mode(self, window: MainWindow):
@@ -1199,7 +1200,7 @@ class TestSettings:
         window._tray_buttons[TrayIconMode.WHITE].click()
         assert_that(window._tray_icon_mode).is_equal_to(TrayIconMode.WHITE)
         assert_that(window._tray.icon().cacheKey()).is_not_equal_to(old_key)
-        assert_that(window._load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
+        assert_that(settings.load_tray_icon_mode()).is_equal_to(TrayIconMode.WHITE)
         assert_that(window._tray_buttons[TrayIconMode.WHITE].isChecked()).is_true()
 
     def test_accent_swatch_style_matches_theme(self, window: MainWindow):
@@ -1320,8 +1321,8 @@ class TestSystemTray:
         window.show()
         window.move(100, 200)
         window.close()
-        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        assert_that(settings.value("window_x")).is_not_none()
+        qsettings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        assert_that(qsettings.value("window_x")).is_not_none()
 
     def test_tray_double_click_shows(self, window: MainWindow):
         window.hide()
