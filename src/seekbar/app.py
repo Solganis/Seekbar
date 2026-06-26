@@ -246,7 +246,7 @@ class MainWindow(QWidget):
                 return "#000000"
             case TrayIconMode.ACCENT:
                 return self._theme.primary
-            case TrayIconMode.AUTO:
+            case TrayIconMode.AUTO:  # pragma: no branch - exhaustive over TrayIconMode, no-match arm unreachable
                 return self._theme.on_surface
 
     @staticmethod
@@ -288,7 +288,7 @@ class MainWindow(QWidget):
                 self._theme_mode = ThemeMode.LIGHT
             case ThemeMode.LIGHT:
                 self._theme_mode = ThemeMode.DARK
-            case ThemeMode.DARK:
+            case ThemeMode.DARK:  # pragma: no branch - exhaustive over ThemeMode, no-match arm unreachable
                 self._theme_mode = ThemeMode.AUTO
         self._save_theme_mode(self._theme_mode)
         self._set_theme(resolve_theme(self._theme_mode, self._accent_id))
@@ -897,7 +897,7 @@ class MainWindow(QWidget):
                 self._move_selection(-self._MAX_VISIBLE)
             case Qt.Key.Key_Home:
                 self._move_selection(-self._result_model.rowCount())
-            case Qt.Key.Key_End:
+            case Qt.Key.Key_End:  # pragma: no branch - reached only with the six nav keys, no-match arm unreachable
                 self._move_selection(self._result_model.rowCount())
 
     def _move_selection(self, delta: int) -> None:

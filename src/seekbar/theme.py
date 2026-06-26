@@ -121,7 +121,7 @@ def _resolve_base(mode: ThemeMode) -> Theme:
             return DARK_THEME
         case ThemeMode.LIGHT:
             return LIGHT_THEME
-        case ThemeMode.AUTO:
+        case ThemeMode.AUTO:  # pragma: no branch - exhaustive over ThemeMode, no-match arm unreachable
             raw_app = QGuiApplication.instance()
             if raw_app is not None:
                 app = cast("QGuiApplication", raw_app)

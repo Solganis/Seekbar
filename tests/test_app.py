@@ -1304,6 +1304,12 @@ class TestSystemTray:
         window._set_theme(LIGHT_THEME)
         assert_that(window._tray.contextMenu().styleSheet()).contains(LIGHT_THEME.surface_variant)
 
+    def test_apply_styles_without_tray_menu(self, window: MainWindow):
+        # If the tray has no context menu, restyling must skip it and still style the window.
+        with patch.object(window._tray, "contextMenu", return_value=None):
+            window._apply_styles()
+        assert_that(window.styleSheet()).contains(window._theme.surface)
+
     def test_close_hides_to_tray(self, window: MainWindow):
         window.show()
         window.close()
@@ -1440,6 +1446,19 @@ class TestAltDrag:
         )
         assert_that(window.eventFilter(window._search_input, release_event)).is_true()
         assert_that(window._drag_pos).is_none()
+
+    def test_other_event_during_drag_passes_through(self, window: MainWindow):
+        # While dragging, an event that is neither a move nor a release must fall through untouched.
+        window._drag_pos = QPoint(10, 10)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonDblClick,
+            QPointF(20, 20),
+            QPointF(120, 120),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        assert_that(window.eventFilter(window._search_input, event)).is_false()
 
 
 class TestGlobalHotkey:
@@ -1806,3 +1825,29 @@ class TestSingleInstanceGuard:
                 assert_that(secondary.is_primary()).is_false()
         finally:
             self._cleanup(primary)
+
+    def test_new_connection_without_server_still_emits(self, qtbot: QtBot):
+        # A spurious newConnection after the server was dropped must still wake the primary instance.
+        guard = _SingleInstanceGuard(self._KEY)
+        real_server = guard._server
+        try:
+            guard._server = None
+            with qtbot.waitSignal(guard.activated, timeout=2000):
+                guard._on_new_connection()
+        finally:
+            guard._server = real_server
+            self._cleanup(guard)
+
+    def test_new_connection_without_pending_connection_emits(self, qtbot: QtBot):
+        # nextPendingConnection can return None under a race; the primary must still be signalled.
+        guard = _SingleInstanceGuard(self._KEY)
+        real_server = guard._server
+        try:
+            fake_server = MagicMock()
+            fake_server.nextPendingConnection.return_value = None
+            guard._server = fake_server
+            with qtbot.waitSignal(guard.activated, timeout=2000):
+                guard._on_new_connection()
+        finally:
+            guard._server = real_server
+            self._cleanup(guard)
