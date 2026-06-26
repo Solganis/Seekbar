@@ -29,7 +29,7 @@ from seekbar.constants import (
     _PARENT_ROLE,
     _system_font_family,
 )
-from seekbar import icons, settings
+from seekbar import content, icons, settings
 from seekbar.filetypes import FileCategory
 from seekbar.model import _RecencyStore, _ResultModel, _basename_length
 from seekbar.search import MAX_RESULTS
@@ -994,8 +994,8 @@ class TestHelpPopup:
             (("B",), "Second"),
             (("C",), "Third"),
         )
-        with patch("seekbar.app._HELP_SHORTCUTS", shortcuts):
-            html = window._help_html()
+        with patch("seekbar.content._HELP_SHORTCUTS", shortcuts):
+            html = content.help_html(window._theme)
         assert_that(html).contains("<td></td><td></td>")
 
     def test_help_updates_on_theme_switch(self, window: MainWindow):
