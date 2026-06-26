@@ -31,7 +31,7 @@ def subprocess_search(
     is_interrupted: Callable[[], bool],
 ) -> int:
     count = 0
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)  # noqa: S603 - command is constructed internally, not from user input
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)  # noqa: S603 - argv list, no shell; the query is a discrete argument and cannot inject a command
     try:
         assert process.stdout is not None  # noqa: S101 - type narrowing for Popen(stdout=PIPE)
         # A blocking `for line in process.stdout` cannot be interrupted, so a backend that hangs
