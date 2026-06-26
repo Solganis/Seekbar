@@ -841,6 +841,28 @@ class TestExtendedNavigation:
         qtbot.keyClick(window, Qt.Key.Key_End)
         assert_that(window._current_row()).is_equal_to(19)
 
+    def test_end_from_input_jumps_to_last(self, window: MainWindow, qtbot: QtBot):
+        # The search field, not the list, holds focus: the event filter must reroute Home/End.
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._select_row(0)
+        qtbot.keyClick(window._search_input, Qt.Key.Key_End)
+        assert_that(window._current_row()).is_equal_to(19)
+
+    def test_home_from_input_jumps_to_first(self, window: MainWindow, qtbot: QtBot):
+        for i in range(20):
+            window._add_result(f"C:/test/file_{i:02d}.txt", 4)
+        window._select_row(15)
+        qtbot.keyClick(window._search_input, Qt.Key.Key_Home)
+        assert_that(window._current_row()).is_equal_to(0)
+
+    def test_home_from_input_without_results_moves_text_cursor(self, window: MainWindow, qtbot: QtBot):
+        # With no results to jump through, Home must stay with the line edit's text cursor.
+        window._search_input.setText("query text")
+        window._search_input.setCursorPosition(len("query text"))
+        qtbot.keyClick(window._search_input, Qt.Key.Key_Home)
+        assert_that(window._search_input.cursorPosition()).is_equal_to(0)
+
 
 class TestSearchingAnimation:
     def test_start_sets_initial_text(self, window: MainWindow):
