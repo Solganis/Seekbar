@@ -34,6 +34,7 @@ from seekbar.app import (
     SETTINGS_ORG,
     _system_font_family,
 )
+from seekbar.filetypes import FileCategory
 from seekbar.search import MAX_RESULTS
 from seekbar.theme import ACCENTS, DARK_THEME, DEFAULT_ACCENT, LIGHT_THEME, ThemeMode, TrayIconMode
 
@@ -490,6 +491,43 @@ class TestResultDelegate:
         assert_that(delegate.file_icon).is_not_same_as(old_file)
         assert_that(delegate.folder_icon.isNull()).is_false()
         assert_that(delegate.file_icon.isNull()).is_false()
+
+    @pytest.mark.parametrize("category", list(FileCategory))
+    def test_every_category_has_a_glyph(self, window: MainWindow, category: FileCategory):
+        pixmap = window._delegate._icons[category]
+        assert_that(pixmap.isNull()).is_false()
+        assert_that(pixmap.width()).is_equal_to(20)
+        assert_that(pixmap.height()).is_equal_to(20)
+
+    def test_set_theme_rebuilds_every_category(self, window: MainWindow):
+        delegate = window._delegate
+        before = dict(delegate._icons)
+        delegate.set_theme(LIGHT_THEME)
+        for category in FileCategory:
+            assert_that(delegate._icons[category]).is_not_same_as(before[category])
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("photo.png", FileCategory.IMAGE),
+            ("clip.MP4", FileCategory.VIDEO),
+            ("song.flac", FileCategory.AUDIO),
+            ("backup.tar.gz", FileCategory.ARCHIVE),
+            ("app.py", FileCategory.CODE),
+            ("notes.txt", FileCategory.DOCUMENT),
+            ("manual.pdf", FileCategory.PDF),
+            ("budget.xlsx", FileCategory.SHEET),
+            ("setup.exe", FileCategory.EXECUTABLE),
+            ("Makefile", FileCategory.GENERIC),
+        ],
+    )
+    def test_icon_for_file_uses_category(self, window: MainWindow, name: str, expected: FileCategory):
+        delegate = window._delegate
+        assert_that(delegate.icon_for(name, is_dir=False)).is_same_as(delegate._icons[expected])
+
+    def test_icon_for_directory_uses_folder(self, window: MainWindow):
+        delegate = window._delegate
+        assert_that(delegate.icon_for("src.py", is_dir=True)).is_same_as(delegate._icons[FileCategory.FOLDER])
 
 
 class TestThemeSwitching:
