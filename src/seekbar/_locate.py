@@ -24,4 +24,6 @@ class LocateSearchStrategy:
         is_interrupted: Callable[[], bool],
     ) -> int:
         raw_query = _normalize(normalized_query)
-        return subprocess_search([self._command, "-i", raw_query], normalized_query, tokens, on_found, is_interrupted)
+        # `--` stops option parsing so a query beginning with `-` is treated as a pattern, not a flag.
+        command = [self._command, "-i", "--", raw_query]
+        return subprocess_search(command, normalized_query, tokens, on_found, is_interrupted)

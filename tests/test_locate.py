@@ -28,7 +28,7 @@ class TestLocateSearchStrategy:
 
         assert_that(count).is_equal_to(7)
         args = mock_search.call_args
-        assert_that(args[0][0]).is_equal_to(["/usr/bin/plocate", "-i", "hosts"])
+        assert_that(args[0][0]).is_equal_to(["/usr/bin/plocate", "-i", "--", "hosts"])
 
     def test_calls_subprocess_search_with_locate(self):
         from seekbar._locate import LocateSearchStrategy  # noqa: PLC0415 - deferred; module has platform guard
@@ -42,4 +42,4 @@ class TestLocateSearchStrategy:
 
         assert_that(count).is_equal_to(3)
         args = mock_search.call_args
-        assert_that(args[0][0]).is_equal_to(["/usr/bin/locate", "-i", "hosts"])
+        assert_that(args[0][0]).is_equal_to(["/usr/bin/locate", "-i", "--", "hosts"])
