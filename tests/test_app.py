@@ -19,23 +19,20 @@ from PySide6.QtWidgets import QStyleOptionViewItem, QSystemTrayIcon
 import seekbar.app
 
 # noinspection PyProtectedMember
-from seekbar.app import (
-    MainWindow,
-    _basename_length,
+from seekbar.app import MainWindow, _handle_version_flag
+from seekbar.constants import (
+    SETTINGS_APP,
+    SETTINGS_ORG,
     _FONT_FAMILY,
-    _handle_version_flag,
-    _SingleInstanceGuard,
     _IS_DIR_ROLE,
     _NAME_ROLE,
     _PARENT_ROLE,
-    _RecencyStore,
-    _ResultModel,
-    SETTINGS_APP,
-    SETTINGS_ORG,
     _system_font_family,
 )
 from seekbar.filetypes import FileCategory
+from seekbar.model import _RecencyStore, _ResultModel, _basename_length
 from seekbar.search import MAX_RESULTS
+from seekbar.single_instance import _SingleInstanceGuard
 from seekbar.theme import ACCENTS, DARK_THEME, DEFAULT_ACCENT, LIGHT_THEME, ThemeMode, TrayIconMode
 
 if TYPE_CHECKING:
