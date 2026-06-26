@@ -37,7 +37,8 @@
   <b>Native backends</b> &middot; NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux<br>
   <b>Flexible matching</b> &middot; underscores, hyphens, and spaces are interchangeable; token order doesn't matter<br>
   <b>Smart ranking</b> &middot; results scored by match quality and recency, streamed as they are found<br>
-  <b>Keyboard-driven</b> &middot; frameless, with a system tray and a global hotkey (Ctrl+Alt+S, Windows and macOS)<br>
+  <b>Keyboard-driven</b> &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S, Windows and macOS), and in-app help (F1)<br>
+  <b>Customizable</b> &middot; eight accent presets and an adjustable tray icon, via an in-app settings panel (F2)<br>
   <b>Dark / light / auto theme</b> &middot; with system detection
 </p>
 
