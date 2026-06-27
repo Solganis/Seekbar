@@ -34,14 +34,12 @@
 
 <h2 align="center">Features</h2>
 
-<p align="center">
-  <b>Native backends</b> &middot; NTFS MFT on Windows, Spotlight on macOS, <code>plocate</code>/<code>locate</code> on Linux<br>
-  <b>Substring matching</b> &middot; case-insensitive; underscores, hyphens, and spaces are interchangeable, and every word must appear, in any order<br>
-  <b>Smart ranking</b> &middot; results scored by match quality and recency, streamed as they are found<br>
-  <b>Keyboard-driven</b> &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S, Windows and macOS), and in-app help (F1)<br>
-  <b>Customizable</b> &middot; eight accent presets and an adjustable tray icon, via an in-app settings panel (F2)<br>
-  <b>Dark / light / auto theme</b> &middot; with system detection
-</p>
+- **Native backends** &middot; NTFS MFT on Windows, Spotlight on macOS, `plocate`/`locate` on Linux
+- **Substring matching** &middot; case-insensitive; underscores, hyphens, and spaces are interchangeable, and every word must appear, in any order
+- **Smart ranking** &middot; results scored by match quality and recency, streamed as they are found
+- **Keyboard-driven** &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S, Windows and macOS), and in-app help (F1)
+- **Customizable** &middot; eight accent presets and an adjustable tray icon, via an in-app settings panel (F2)
+- **Dark / light / auto theme** &middot; with system detection
 
 <h2 align="center">Keyboard shortcuts</h2>
 
