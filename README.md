@@ -38,7 +38,7 @@
 - **No index, no daemon** &middot; searches on demand and streams results live; nothing runs in the background, nothing to keep in sync or goes stale
 - **Substring matching** &middot; case-insensitive; underscores, hyphens, and spaces are interchangeable, and every word must appear, in any order
 - **Smart ranking** &middot; results scored by match quality and recency, streamed as they are found
-- **Keyboard-driven** &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S, Windows and macOS), and in-app help (F1)
+- **Keyboard-driven** &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S on Windows, macOS, and Linux/X11), and in-app help (F1)
 - **Customizable** &middot; eight accent presets and an adjustable tray icon, via an in-app settings panel (F2)
 - **Dark / light / auto theme** &middot; with system detection
 
@@ -46,7 +46,7 @@
 
 <div align="center">
 <table>
-<tr><td><kbd>Ctrl+Alt+S</kbd></td><td>Show / hide window (global, Windows and macOS)</td></tr>
+<tr><td><kbd>Ctrl+Alt+S</kbd></td><td>Show / hide window (global; Windows, macOS, Linux/X11)</td></tr>
 <tr><td><kbd>F1</kbd></td><td>Toggle shortcuts help</td></tr>
 <tr><td><kbd>Enter</kbd></td><td>Open selected file</td></tr>
 <tr><td><kbd>Esc</kbd></td><td>Clear search text, then close window</td></tr>
