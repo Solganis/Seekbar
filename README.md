@@ -35,6 +35,7 @@
 <h2 align="center">Features</h2>
 
 - **Native backends** &middot; NTFS MFT on Windows, Spotlight on macOS, `plocate`/`locate` on Linux
+- **No index, no daemon** &middot; searches on demand and streams results live; nothing runs in the background, nothing to keep in sync or goes stale
 - **Substring matching** &middot; case-insensitive; underscores, hyphens, and spaces are interchangeable, and every word must appear, in any order
 - **Smart ranking** &middot; results scored by match quality and recency, streamed as they are found
 - **Keyboard-driven** &middot; frameless, with a system tray, a global hotkey (Ctrl+Alt+S, Windows and macOS), and in-app help (F1)
