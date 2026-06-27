@@ -67,11 +67,11 @@ exclude_lines = [
 [dependency-groups]
 dev = [
     "ruff>=0.15.20",
-    "ty>=0.0.54",
+    "ty>=0.0.55",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "pytest-cov>=7.1.0",
     "pyinstaller>=6.21.0",
-    "assertpy2>=2.9.1",
+    "assertpy2>=2.11.0",
     "hypothesis>=6.155.7",
 ]
