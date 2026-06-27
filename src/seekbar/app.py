@@ -354,8 +354,9 @@ class MainWindow(QWidget):
         panel.hide()
         return panel
 
+    @staticmethod
     def _build_segmented_row[K](
-        self, panel: QFrame, items: Sequence[tuple[K, str]], on_click: Callable[[K], None]
+        panel: QFrame, items: Sequence[tuple[K, str]], on_click: Callable[[K], None]
     ) -> tuple[QHBoxLayout, QButtonGroup, dict[K, QPushButton]]:
         row = QHBoxLayout()
         row.setSpacing(8)

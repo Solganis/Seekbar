@@ -22,9 +22,10 @@ class _SingleInstanceGuard(QObject):
             probe.disconnectFromServer()
             return False
         QLocalServer.removeServer(self._key)  # clear a stale socket left by a crashed instance (Unix)
-        self._server = QLocalServer(self)
-        self._server.newConnection.connect(self._on_new_connection)
-        self._server.listen(self._key)
+        server = QLocalServer(self)
+        server.newConnection.connect(self._on_new_connection)
+        server.listen(self._key)
+        self._server = server
         return True
 
     def _on_new_connection(self) -> None:
