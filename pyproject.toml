@@ -54,6 +54,7 @@ omit = [
     "*/_autostart_macos.py",
     "*/_autostart_linux.py",
     "*/_hotkey_macos.py",
+    "*/_hotkey_linux.py",
 ]
 
 [tool.coverage.report]

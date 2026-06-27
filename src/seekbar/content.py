@@ -4,10 +4,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from seekbar.theme import Theme
 
-# The global hotkey is registered on Windows and macOS (see hotkey.py / _hotkey_macos.py); Linux has no
-# portable global-hotkey API, so there the tray is the entry point.
+# The global hotkey is registered on Windows and macOS via OS APIs, and on Linux via X11 (XGrabKey,
+# see _hotkey_linux.py). Under a pure Wayland session the X grab is unavailable; registration then
+# fails gracefully and the tray remains the entry point.
 _GLOBAL_HOTKEY_HELP: tuple[tuple[tuple[str, ...], str], ...] = (
-    ((("Ctrl+Alt+S",), "Show / Hide"),) if sys.platform in ("win32", "darwin") else ()
+    ((("Ctrl+Alt+S",), "Show / Hide"),) if sys.platform in ("win32", "darwin", "linux") else ()
 )
 _HELP_SHORTCUTS: tuple[tuple[tuple[str, ...], str] | None, ...] = (
     (("↑", "↓"), "Navigate"),

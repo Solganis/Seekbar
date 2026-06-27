@@ -75,13 +75,21 @@ if sys.platform == "win32":  # pragma: no cover - Windows-only, not reachable of
             return False, 0
 
     _hotkey_mac = None
+    _hotkey_lin = None
 elif sys.platform == "darwin":  # pragma: no cover - macOS-only branch
     from seekbar import _hotkey_macos as _hotkey_mac
 
     _hotkey = None
-else:  # pragma: no cover - non-Windows/macOS fallback
+    _hotkey_lin = None
+elif sys.platform == "linux":  # pragma: no cover - Linux-only branch
+    from seekbar import _hotkey_linux as _hotkey_lin
+
     _hotkey = None
     _hotkey_mac = None
+else:  # pragma: no cover - other-platform fallback
+    _hotkey = None
+    _hotkey_mac = None
+    _hotkey_lin = None
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -875,6 +883,8 @@ class MainWindow(QWidget):
                 app.removeNativeEventFilter(self._hotkey_filter)
         elif _hotkey_mac is not None and self._hotkey_registered:
             _hotkey_mac.unregister_hotkey()
+        elif _hotkey_lin is not None and self._hotkey_registered:
+            _hotkey_lin.unregister_hotkey()
         self._tray.hide()
         QApplication.quit()
 
@@ -893,6 +903,8 @@ class MainWindow(QWidget):
                 app.installNativeEventFilter(self._hotkey_filter)
         elif _hotkey_mac is not None:
             self._hotkey_registered = _hotkey_mac.register_hotkey(self._toggle_visibility)
+        elif _hotkey_lin is not None:
+            self._hotkey_registered = _hotkey_lin.register_hotkey(self._toggle_visibility)
 
 
 def _handle_version_flag(argv: list[str]) -> bool:

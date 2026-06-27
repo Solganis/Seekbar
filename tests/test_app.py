@@ -1526,6 +1526,61 @@ class TestGlobalHotkey:
                 main_window._quit_app()
         mock_mac.unregister_hotkey.assert_called_once()
 
+    def test_hotkey_registers_via_linux_backend(self, qtbot: QtBot):
+        mock_lin = MagicMock()
+        mock_lin.register_hotkey.return_value = True
+        with (
+            patch("seekbar.app._hotkey", None),
+            patch("seekbar.app._hotkey_mac", None),
+            patch("seekbar.app._hotkey_lin", mock_lin),
+        ):
+            main_window = MainWindow()
+        qtbot.addWidget(main_window)
+        try:
+            mock_lin.register_hotkey.assert_called_once()
+            assert_that(main_window._hotkey_registered).is_true()
+        finally:
+            main_window._tray.hide()
+
+    def test_quit_unregisters_linux_hotkey(self, qtbot: QtBot):
+        mock_lin = MagicMock()
+        mock_lin.register_hotkey.return_value = True
+        with (
+            patch("seekbar.app._hotkey", None),
+            patch("seekbar.app._hotkey_mac", None),
+            patch("seekbar.app._hotkey_lin", mock_lin),
+        ):
+            main_window = MainWindow()
+            qtbot.addWidget(main_window)
+            with patch.object(seekbar.app.QApplication, "quit"):
+                main_window._quit_app()
+        mock_lin.unregister_hotkey.assert_called_once()
+
+    def test_no_hotkey_backend_registers_nothing(self, qtbot: QtBot):
+        with (
+            patch("seekbar.app._hotkey", None),
+            patch("seekbar.app._hotkey_mac", None),
+            patch("seekbar.app._hotkey_lin", None),
+        ):
+            main_window = MainWindow()
+        qtbot.addWidget(main_window)
+        try:
+            assert_that(main_window._hotkey_registered).is_false()
+        finally:
+            main_window._tray.hide()
+
+    def test_quit_without_hotkey_backend(self, qtbot: QtBot):
+        with (
+            patch("seekbar.app._hotkey", None),
+            patch("seekbar.app._hotkey_mac", None),
+            patch("seekbar.app._hotkey_lin", None),
+        ):
+            main_window = MainWindow()
+            qtbot.addWidget(main_window)
+            with patch.object(seekbar.app.QApplication, "quit"):
+                main_window._quit_app()
+        assert_that(main_window._hotkey_registered).is_false()
+
     def test_no_filter_on_registration_failure(self, window: MainWindow):
         assert_that(window._hotkey_filter).is_none()
 

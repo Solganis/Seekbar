@@ -43,7 +43,7 @@ jobs:
           enable-cache: true
       - name: Install Qt dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libx11-6
       - run: uv sync
       - name: Generate coverage config
         shell: python
@@ -58,7 +58,7 @@ jobs:
           if sys.platform != "darwin":
               omit += ["*/_spotlight.py", "*/_autostart_macos.py", "*/_hotkey_macos.py"]
           if sys.platform != "linux":
-              omit += ["*/_locate.py", "*/_autostart_linux.py"]
+              omit += ["*/_locate.py", "*/_autostart_linux.py", "*/_hotkey_linux.py"]
           lines = ["[run]", "source = seekbar", "omit ="]
           lines += [f"    {p}" for p in omit]
           lines += ["", "[report]", "show_missing = true", "exclude_lines ="]
