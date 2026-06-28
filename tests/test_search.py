@@ -57,6 +57,32 @@ class _FakeScandir:
         return iter(self._entries)
 
 
+class _RaisingScandir:
+    # os.scandir() succeeds, but reading the directory entries raises (Linux /proc/<pid>/map_files EACCES).
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        pass
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise PermissionError
+
+
+class _FakeEntry:
+    def __init__(self, name: str, path: str, *, is_dir: bool):
+        self.name = name
+        self.path = path
+        self._is_dir = is_dir
+
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        _ = follow_symlinks
+        return self._is_dir
+
+
 @pytest.fixture(autouse=True)
 def _force_walk_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # Worker-integration tests seed a tmp tree and expect the os.scandir walk. Force every native backend to
@@ -662,6 +688,39 @@ class TestWalkSearchStrategy:
         strategy = WalkSearchStrategy([tmp_path])
         count = strategy.execute("anything", ["anything"], lambda _p, _s, _d, _id: None, lambda: False)
         assert_that(count).is_equal_to(0)
+
+    def test_handles_permission_error_during_iteration(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        # scandir() returns an iterator that raises only when read - the failure mode that escaped on Linux CI.
+        monkeypatch.setattr(os, "scandir", lambda _path: _RaisingScandir())
+        strategy = WalkSearchStrategy([tmp_path])
+        count = strategy.execute("anything", ["anything"], lambda _p, _s, _d, _id: None, lambda: False)
+        assert_that(count).is_equal_to(0)
+
+    def test_unreadable_dir_does_not_abort_siblings(self, monkeypatch: pytest.MonkeyPatch):
+        # A directory that raises mid-iteration must skip to the next stack item, not abort the whole walk.
+        # The root lists "readable" then "blocked", so "blocked" is pushed last and popped first: if the guard
+        # used `break` instead of `continue`, the still-queued "readable" dir would never be visited.
+        root = Path("/root")
+        readable_dir = root / "readable"
+        blocked_dir = root / "blocked"
+        match_path = readable_dir / "hosts_match"
+        tree = {
+            str(root): _FakeScandir(
+                [
+                    _FakeEntry("readable", str(readable_dir), is_dir=True),
+                    _FakeEntry("blocked", str(blocked_dir), is_dir=True),
+                ]
+            ),
+            str(readable_dir): _FakeScandir([_FakeEntry("hosts_match", str(match_path), is_dir=False)]),
+            str(blocked_dir): _RaisingScandir(),
+        }
+        monkeypatch.setattr(os, "scandir", lambda path: tree[path])
+
+        results: list[str] = []
+        WalkSearchStrategy([root]).execute(
+            "hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False
+        )
+        assert_that(results).contains(str(match_path))
 
     def test_interruption(self, search_tree: Path):
         results: list[str] = []

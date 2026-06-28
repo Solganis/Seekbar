@@ -138,21 +138,26 @@ class WalkSearchStrategy:
                 entries = os.scandir(current)
             except OSError:
                 continue
-            with entries:
-                for entry in entries:
-                    if is_interrupted() or (initial_count + count) >= MAX_RESULTS:
-                        return count
-                    try:
-                        is_dir = entry.is_dir(follow_symlinks=False)
-                    except OSError:
-                        is_dir = False
-                    normalized_name = _normalize(entry.name.lower())
-                    if _matches_normalized(normalized_name, normalized_query, tokens):
-                        depth = entry.path.count(os.sep)
-                        on_found(entry.path, _score_from_normalized(normalized_query, normalized_name), depth, is_dir)
-                        count += 1
-                    if is_dir and entry.name not in SKIP_DIRS:
-                        stack.append(entry.path)
+            try:
+                with entries:
+                    for entry in entries:
+                        if is_interrupted() or (initial_count + count) >= MAX_RESULTS:
+                            return count
+                        try:
+                            is_dir = entry.is_dir(follow_symlinks=False)
+                        except OSError:
+                            is_dir = False
+                        normalized_name = _normalize(entry.name.lower())
+                        if _matches_normalized(normalized_name, normalized_query, tokens):
+                            depth = entry.path.count(os.sep)
+                            score = _score_from_normalized(normalized_query, normalized_name)
+                            on_found(entry.path, score, depth, is_dir)
+                            count += 1
+                        if is_dir and entry.name not in SKIP_DIRS:
+                            stack.append(entry.path)
+            except OSError:
+                # directory became unreadable mid-iteration (e.g. /proc/<pid>/map_files on Linux EACCES)
+                continue
         return count
 
 
