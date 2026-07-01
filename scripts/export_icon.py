@@ -1,33 +1,72 @@
-"""Export the Seekbar application icon to assets/seekbar.ico."""
+"""Export the Seekbar application icons: Windows .ico, macOS .icns, and a source .png.
+
+The icon is a white magnifying glass on a dark rounded tile. The dark tile keeps the mark
+legible on any background (Explorer/Finder light mode included), where a bare white glass on
+a transparent background would vanish. The dark shade matches DARK_THEME.surface.
+"""
 
 import struct
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QBuffer, QIODevice
+from PySide6.QtCore import QBuffer, QIODevice, QLineF, QRectF
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPen, Qt
 
-ICON_COLOR = "#5CD0C4"
-ICON_SIZES = (16, 32, 48, 256)
+GLASS_COLOR = "#FFFFFF"
+BACKGROUND_COLOR = "#1E1E1E"
+
+ICO_SIZES = (16, 32, 48, 256)
+# ICNS PNG-based entries: (OSType, pixel size). These cover the Dock and Finder at 1x and 2x.
+ICNS_ENTRIES = (
+    (b"ic11", 32),
+    (b"ic12", 64),
+    (b"ic07", 128),
+    (b"ic08", 256),
+    (b"ic09", 512),
+    (b"ic10", 1024),
+)
+PNG_SOURCE_SIZE = 256
+
 # In an ICO directory entry width/height are single bytes; the value 0 encodes a 256 px dimension.
 ICO_DIMENSION_LIMIT = 256
 
+# The glass is drawn in a 32-unit design space; these constants scale-and-center its antialiased
+# bounding box inside each tile so the padding around it is even at every export size.
+_GLASS_BBOX_CENTER = 14.48
+_GLASS_BBOX_EXTENT = 24.36
+_GLASS_TILE_FRACTION = 0.62  # the glass spans 62% of the tile, leaving the rest as padding
+_TILE_CORNER_FRACTION = 0.22
 
-def render_icon(size: int, color_hex: str) -> QImage:
-    """Render a magnifying glass icon at the given pixel size."""
+
+def _draw_glass(painter: QPainter) -> None:
+    """Stroke the magnifying glass in the 32-unit design space at the painter's current transform."""
+    center, radius = 12.0, 8.0
+    painter.setPen(QPen(QColor(GLASS_COLOR), 3.4))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(QRectF(center - radius, center - radius, radius * 2, radius * 2))
+    painter.setPen(QPen(QColor(GLASS_COLOR), 4.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    handle_start = center + radius * 0.7071
+    painter.drawLine(QLineF(handle_start, handle_start, handle_start + 7, handle_start + 7))
+
+
+def render_icon(size: int) -> QImage:
+    """Render a white magnifying glass on a dark rounded tile at the given pixel size."""
     image = QImage(size, size, QImage.Format.Format_ARGB32)
     image.fill(0)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    scale = size / 32.0
-    color = QColor(color_hex)
-    painter.setPen(QPen(color, 3.4 * scale))
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    cx, cy, radius = 12.0 * scale, 12.0 * scale, 8.0 * scale
-    painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
-    painter.setPen(QPen(color, 4.0 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-    handle_x, handle_y = cx + radius * 0.707, cy + radius * 0.707
-    painter.drawLine(int(handle_x), int(handle_y), int(handle_x + 7 * scale), int(handle_y + 7 * scale))
+
+    corner = size * _TILE_CORNER_FRACTION
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(BACKGROUND_COLOR))
+    painter.drawRoundedRect(QRectF(0, 0, size, size), corner, corner)
+
+    scale = size * _GLASS_TILE_FRACTION / _GLASS_BBOX_EXTENT
+    painter.translate(size / 2, size / 2)
+    painter.scale(scale, scale)
+    painter.translate(-_GLASS_BBOX_CENTER, -_GLASS_BBOX_CENTER)
+    _draw_glass(painter)
+
     painter.end()
     return image
 
@@ -66,15 +105,28 @@ def write_ico(images: list[QImage], output_path: Path) -> None:
         ico_file.writelines(png_payloads)
 
 
+def write_icns(entries: list[tuple[bytes, bytes]], output_path: Path) -> None:
+    """Write PNG-encoded frames into a macOS .icns file."""
+    body = b"".join(ostype + struct.pack(">I", len(png) + 8) + png for ostype, png in entries)
+    output_path.write_bytes(b"icns" + struct.pack(">I", len(body) + 8) + body)
+
+
 def main() -> None:
     app = QGuiApplication(sys.argv)  # noqa: F841 - QPainter requires a live QGuiApplication instance
-    images = [render_icon(size, ICON_COLOR) for size in ICON_SIZES]
-
     assets_dir = Path(__file__).resolve().parent.parent / "assets"
     assets_dir.mkdir(exist_ok=True)
+
     ico_path = assets_dir / "seekbar.ico"
-    write_ico(images, ico_path)
+    write_ico([render_icon(size) for size in ICO_SIZES], ico_path)
     print(f"Wrote {ico_path} ({ico_path.stat().st_size} bytes)")
+
+    icns_path = assets_dir / "seekbar.icns"
+    write_icns([(ostype, image_to_png_bytes(render_icon(px))) for ostype, px in ICNS_ENTRIES], icns_path)
+    print(f"Wrote {icns_path} ({icns_path.stat().st_size} bytes)")
+
+    png_path = assets_dir / "seekbar.png"
+    png_path.write_bytes(image_to_png_bytes(render_icon(PNG_SOURCE_SIZE)))
+    print(f"Wrote {png_path} ({png_path.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":
