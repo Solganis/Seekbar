@@ -5,7 +5,7 @@ description = "Cross-platform file search with native backends"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [{name = "Solganis"}]
-dependencies = ["PySide6>=6.11.1"]
+dependencies = ["PySide6-Essentials>=6.11.1"]
 
 [project.scripts]
 seekbar = "seekbar.app:main"

@@ -11,6 +11,40 @@ elif sys.platform == "darwin":
 else:
     icon = None
 
+# The app uses only QtCore/QtGui/QtWidgets/QtNetwork. Drop the unused Essentials modules from the freeze.
+# QtDBus is intentionally kept: the Linux system-tray (StatusNotifierItem) needs it.
+_EXCLUDES = [
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuickWidgets",
+    "PySide6.QtQuickControls2",
+    "PySide6.QtSql",
+    "PySide6.QtSvg",
+    "PySide6.QtSvgWidgets",
+    "PySide6.QtPrintSupport",
+    "PySide6.QtOpenGL",
+    "PySide6.QtOpenGLWidgets",
+    "PySide6.QtTest",
+    "PySide6.QtXml",
+    "PySide6.QtConcurrent",
+    "PySide6.QtHelp",
+    "PySide6.QtDesigner",
+    "PySide6.QtUiTools",
+    "PySide6.QtStateMachine",
+    "PySide6.QtNetworkAuth",
+]
+
+# UPX corrupts or cannot compress these; everything else (Qt6 DLLs are the bulk) is compressed.
+_UPX_EXCLUDE = [
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "python3.dll",
+    "python313.dll",
+    "python314.dll",
+    "ucrtbase.dll",
+    "api-ms-win-*.dll",
+]
+
 
 def _windows_version_info():
     from PyInstaller.utils.win32.versioninfo import (
@@ -60,9 +94,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=_EXCLUDES,
     noarchive=False,
 )
+
+# The app never loads Qt translations; drop the ~300 bundled .qm files.
+a.datas = [entry for entry in a.datas if "translations" not in entry[0].replace("\\", "/").split("/")]
 
 pyz = PYZ(a.pure)
 
@@ -75,9 +112,9 @@ exe = EXE(
     name="Seekbar",
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
+    strip=sys.platform != "win32",
+    upx=sys.platform != "darwin",
+    upx_exclude=_UPX_EXCLUDE,
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
