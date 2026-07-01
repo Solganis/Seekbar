@@ -34,17 +34,6 @@ _EXCLUDES = [
     "PySide6.QtNetworkAuth",
 ]
 
-# UPX corrupts or cannot compress these; everything else (Qt6 DLLs are the bulk) is compressed.
-_UPX_EXCLUDE = [
-    "vcruntime140.dll",
-    "vcruntime140_1.dll",
-    "python3.dll",
-    "python313.dll",
-    "python314.dll",
-    "ucrtbase.dll",
-    "api-ms-win-*.dll",
-]
-
 
 def _windows_version_info():
     from PyInstaller.utils.win32.versioninfo import (
@@ -113,8 +102,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=sys.platform != "win32",
-    upx=sys.platform != "darwin",
-    upx_exclude=_UPX_EXCLUDE,
+    upx=False,  # PyInstaller disables UPX on Linux/macOS anyway, and on Windows it only risks AV false positives
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,

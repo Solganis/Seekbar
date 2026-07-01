@@ -35,15 +35,6 @@ jobs:
         run: uv run pytest tests/ -v
         env:
           QT_QPA_PLATFORM: offscreen
-      - name: Install UPX
-        if: runner.os != 'macOS'
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            choco install upx -y --no-progress
-          else
-            sudo apt-get install -y upx-ucl
-          fi
       - run: uv run pyinstaller seekbar.spec --distpath dist --workpath build --clean
       - name: Resolve version
         id: ver
