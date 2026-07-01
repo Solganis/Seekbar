@@ -1,12 +1,16 @@
+# Package metadata. The version is dynamic: single-sourced from src/seekbar/__init__.py (see [tool.hatch.version]).
 [project]
 name = "seekbar"
 dynamic = ["version"]
 description = "Cross-platform file search with native backends"
-requires-python = ">=3.14"
+requires-python = ">=3.14"  # modern syntax only: match/case, PEP 758 except, generics in builtins
 license = "MIT"
 authors = [{name = "Solganis"}]
+# Essentials, not the full PySide6: the app uses only QtCore/QtGui/QtWidgets/QtNetwork, so this drops the
+# unused addon modules (WebEngine, Charts, 3D, Multimedia, ...) and keeps the frozen build small.
 dependencies = ["PySide6-Essentials>=6.11.1"]
 
+# Console entry point: `seekbar` launches the GUI.
 [project.scripts]
 seekbar = "seekbar.app:main"
 
@@ -14,6 +18,7 @@ seekbar = "seekbar.app:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Version single source of truth: read from the package's __version__.
 [tool.hatch.version]
 path = "src/seekbar/__init__.py"
 
@@ -25,13 +30,16 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
+# Enable every rule, then opt out narrowly: D = no mandatory docstrings; COM812/ISC001 conflict with the formatter.
 select = ["ALL"]
 ignore = ["D", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
 # scripts are standalone dev tools: not an importable package (INP001) and may print to stdout (T201)
 "scripts/**/*.py" = ["INP001", "T201"]
+# app.py reveals a file in the OS file manager (explorer/open) with a fixed argv, no shell: subprocess audit N/A
 "src/seekbar/app.py" = ["S603", "S607"]
+# tests may assert (S101), use magic numbers/private members, be one-file, and skip type/annotation rules
 "tests/**/*.py" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "TC002", "PLW0108", "I001", "FBT"]
 
 [tool.ty.environment]
@@ -47,6 +55,8 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["seekbar"]
+# Platform-specific backends are import-guarded to a single OS, so they are not importable (and cannot reach
+# 100%) on the other OSes. Omit them here; each is exercised to full coverage on its own OS in CI.
 omit = [
     "*/__main__.py",
     "*/_spotlight.py",
@@ -59,20 +69,22 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
+# Non-executable or unreachable-by-design lines that should not count against coverage.
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "if __name__",
 ]
 
+# Dev/test/build tooling (not shipped): linter, type checker, test stack, packager, assertion and property libs.
 [dependency-groups]
 dev = [
     "ruff>=0.15.20",
-    "ty>=0.0.55",
+    "ty>=0.0.56",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "pytest-cov>=7.1.0",
     "pyinstaller>=6.21.0",
-    "assertpy2>=2.11.0",
+    "assertpy2>=2.12.0",
     "hypothesis>=6.155.7",
 ]
