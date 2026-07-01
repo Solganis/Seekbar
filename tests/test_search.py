@@ -807,6 +807,44 @@ class TestMftSearchStrategy:
         strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
         assert_that(results).is_empty()
 
+    def test_records_holds_only_directories(self, monkeypatch: pytest.MonkeyPatch):
+        # Pins the dir-only memory optimization: file records must never be retained.
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        users = MftRecord(file_ref=20, parent_ref=5, name="Users", is_dir=True)
+        file_a = MftRecord(file_ref=10, parent_ref=20, name="a.txt", is_dir=False)
+        file_b = MftRecord(file_ref=11, parent_ref=5, name="b.txt", is_dir=False)
+        batches = [[root_dir, users, file_a, file_b]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("zzznomatch", ["zzznomatch"], lambda *_args: None, lambda: False)
+        assert_that(sorted(strategy._records)).is_equal_to([5, 20])
+        assert_that([is_dir for _parent, _name, is_dir in strategy._records.values()]).is_equal_to([True, True])
+
+    def test_matched_directory_resolves_own_path(self, monkeypatch: pytest.MonkeyPatch):
+        root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
+        hosts_dir = MftRecord(file_ref=10, parent_ref=5, name="hosts_dir", is_dir=True)
+        batches = [[root_dir, hosts_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        emitted: list[tuple[str, bool]] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute(
+            "hosts", ["hosts"], lambda path, _s, _d, is_dir: emitted.append((path, is_dir)), lambda: False
+        )
+        assert_that(emitted).is_equal_to([("C:\\hosts_dir", True)])
+
+    def test_deferred_directory_match(self, monkeypatch: pytest.MonkeyPatch):
+        sub_dir = MftRecord(file_ref=10, parent_ref=20, name="hosts_proj", is_dir=True)
+        parent_dir = MftRecord(file_ref=20, parent_ref=5, name="Users", is_dir=True)
+        batches = [[sub_dir], [parent_dir]]
+
+        monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
+        results: list[str] = []
+        strategy = MftSearchStrategy("C:")
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, _id: results.append(path), lambda: False)
+        assert_that(results).is_equal_to(["C:\\Users\\hosts_proj"])
+
     def test_skip_dirs_filtering(self, monkeypatch: pytest.MonkeyPatch):
         root_dir = MftRecord(file_ref=5, parent_ref=0, name=".", is_dir=True)
         git_dir = MftRecord(file_ref=20, parent_ref=5, name=".git", is_dir=True)

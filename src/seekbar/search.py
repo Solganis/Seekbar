@@ -196,7 +196,7 @@ class MftSearchStrategy:
         tokens: list[str],
         on_found: Callable[[str, int, int, bool], object],
     ) -> None:
-        from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
+        from seekbar._mft import _MFT_ROOT_REF, resolve_record_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         records = self._records
         skip_refs = self._skip_refs
@@ -208,19 +208,21 @@ class MftSearchStrategy:
             file_ref = mft_record.file_ref
             name = mft_record.name
             is_dir = mft_record.is_dir
-            records[file_ref] = (mft_record.parent_ref, name, is_dir)
-            if is_dir and name in SKIP_DIRS:
-                skip_refs.add(file_ref)
+            if is_dir:
+                # Retain directories only: a file is never an ancestor, so it resolves via its parent.
+                records[file_ref] = (mft_record.parent_ref, name, is_dir)
+                if name in SKIP_DIRS:
+                    skip_refs.add(file_ref)
             if count >= MAX_RESULTS:
                 continue
             normalized_name = _normalize(name.lower())
             if not _matches_normalized(normalized_name, normalized_query, tokens):
                 continue
-            resolved = resolve_path(file_ref, records, _MFT_ROOT_REF, drive, path_cache)
+            resolved = resolve_record_path(mft_record, records, _MFT_ROOT_REF, drive, path_cache)
             if not resolved:
                 pending[file_ref] = mft_record
                 continue
-            if not self._is_under_skip_dir(file_ref):
+            if not self._is_under_skip_dir(file_ref if is_dir else mft_record.parent_ref):
                 score = _score_from_normalized(normalized_query, normalized_name)
                 on_found(resolved, score, resolved.count("\\"), is_dir)
                 count += 1
@@ -233,7 +235,7 @@ class MftSearchStrategy:
         *,
         cleanup: bool,
     ) -> None:
-        from seekbar._mft import _MFT_ROOT_REF, resolve_path  # noqa: PLC0415 - conditional, _mft is Windows-only
+        from seekbar._mft import _MFT_ROOT_REF, resolve_record_path  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         records = self._records
         path_cache = self._path_cache
@@ -243,10 +245,10 @@ class MftSearchStrategy:
         for ref, mft_record in pending.items():
             if self._count >= MAX_RESULTS:
                 break
-            resolved = resolve_path(ref, records, _MFT_ROOT_REF, drive, path_cache)
+            resolved = resolve_record_path(mft_record, records, _MFT_ROOT_REF, drive, path_cache)
             if resolved:
                 resolved_refs.append(ref)
-                if not self._is_under_skip_dir(ref):
+                if not self._is_under_skip_dir(ref if mft_record.is_dir else mft_record.parent_ref):
                     score = _score(normalized_query, mft_record.name)
                     on_found(resolved, score, resolved.count("\\"), mft_record.is_dir)
                     self._count += 1
@@ -254,14 +256,14 @@ class MftSearchStrategy:
             for ref in resolved_refs:
                 del pending[ref]
 
-    def _is_under_skip_dir(self, file_ref: int) -> bool:
+    def _is_under_skip_dir(self, start_ref: int) -> bool:
         from seekbar._mft import _MFT_ROOT_REF  # noqa: PLC0415 - conditional, _mft is Windows-only
 
         records = self._records
         skip_refs = self._skip_refs
         skip_cache = self._skip_cache
         chain: list[int] = []
-        current = file_ref
+        current = start_ref
         seen: set[int] = set()
         result = False
         while current in records and current != _MFT_ROOT_REF:

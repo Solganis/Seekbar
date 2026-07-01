@@ -214,3 +214,19 @@ def resolve_path(
         path = path + "\\" + names[index]
         cache[chain[index]] = path
     return path
+
+
+def resolve_record_path(
+    record: MftRecord,
+    records: dict[int, tuple[int, str, bool]],
+    root_ref: int,
+    drive_letter: str,
+    cache: dict[int, str],
+) -> str:
+    # records holds directories only; a file resolves via its parent, returning "" until the parent is seen.
+    if record.is_dir:
+        return resolve_path(record.file_ref, records, root_ref, drive_letter, cache)
+    parent_path = resolve_path(record.parent_ref, records, root_ref, drive_letter, cache)
+    if not parent_path:
+        return ""
+    return parent_path + "\\" + record.name
