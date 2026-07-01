@@ -829,9 +829,7 @@ class TestMftSearchStrategy:
         monkeypatch.setattr("seekbar._mft.stream_mft", self._make_stream_mft(batches))
         emitted: list[tuple[str, bool]] = []
         strategy = MftSearchStrategy("C:")
-        strategy.execute(
-            "hosts", ["hosts"], lambda path, _s, _d, is_dir: emitted.append((path, is_dir)), lambda: False
-        )
+        strategy.execute("hosts", ["hosts"], lambda path, _s, _d, is_dir: emitted.append((path, is_dir)), lambda: False)
         assert_that(emitted).is_equal_to([("C:\\hosts_dir", True)])
 
     def test_deferred_directory_match(self, monkeypatch: pytest.MonkeyPatch):
