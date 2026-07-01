@@ -35,6 +35,15 @@ jobs:
         run: uv run pytest tests/ -v
         env:
           QT_QPA_PLATFORM: offscreen
+      - name: Install UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install upx -y --no-progress
+          else
+            sudo apt-get install -y upx-ucl
+          fi
       - run: uv run pyinstaller seekbar.spec --distpath dist --workpath build --clean
       - name: Resolve version
         id: ver
@@ -49,10 +58,31 @@ jobs:
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
         run: dist/Seekbar.app/Contents/MacOS/Seekbar --version
+      - name: GUI smoke (offscreen)
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          case "$RUNNER_OS" in
+            Windows) bin="dist/Seekbar.exe" ;;
+            macOS) bin="dist/Seekbar.app/Contents/MacOS/Seekbar" ;;
+            *) bin="dist/Seekbar" ;;
+          esac
+          "$bin" &
+          pid=$!
+          sleep 8
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "GUI stack loaded (alive under offscreen)"
+            kill "$pid" 2>/dev/null || true
+          else
+            wait "$pid" || true
+            echo "GUI smoke failed: binary exited early under offscreen"
+            exit 1
+          fi
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: cd dist && 7z a "../Seekbar-${VERSION}-${SUFFIX}.zip" Seekbar.exe
+        run: cd dist && 7z a -mx=9 "../Seekbar-${VERSION}-${SUFFIX}.zip" Seekbar.exe
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           SUFFIX: ${{ matrix.suffix }}
