@@ -120,7 +120,7 @@ class WalkSearchStrategy:
         return count
 
     @staticmethod
-    def _walk(  # noqa: PLR0913 - tightly coupled walk parameters
+    def _walk(  # noqa: PLR0913, PLR0917 - tightly coupled walk parameters
         root: Path,
         normalized_query: str,
         tokens: list[str],

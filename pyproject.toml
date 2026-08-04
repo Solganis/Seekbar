@@ -30,9 +30,10 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
-# Enable every rule, then opt out narrowly: D = no mandatory docstrings; COM812/ISC001 conflict with the formatter.
+# Enable every rule, then opt out narrowly: D = no mandatory docstrings; COM812/ISC001 conflict with the
+# formatter; CPY001 (ruff 0.16 folded it into ALL) wants a copyright header in every file, the LICENSE covers it.
 select = ["ALL"]
-ignore = ["D", "COM812", "ISC001"]
+ignore = ["D", "COM812", "ISC001", "CPY001"]
 
 [tool.ruff.lint.per-file-ignores]
 # scripts are standalone dev tools: not an importable package (INP001) and may print to stdout (T201)
@@ -79,12 +80,12 @@ exclude_lines = [
 # Dev/test/build tooling (not shipped): linter, type checker, test stack, packager, assertion and property libs.
 [dependency-groups]
 dev = [
-    "ruff>=0.15.22",
-    "ty>=0.0.61",
+    "ruff>=0.16.1",
+    "ty>=0.0.66",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "pytest-cov>=7.1.0",
     "pyinstaller>=6.21.0",
-    "assertpy2>=2.17.0",
-    "hypothesis>=6.157.0",
+    "assertpy2>=2.18.0",
+    "hypothesis>=6.165.1",
 ]
