@@ -8,7 +8,7 @@ license = "MIT"
 authors = [{name = "Solganis"}]
 # Essentials, not the full PySide6: the app uses only QtCore/QtGui/QtWidgets/QtNetwork, so this drops the
 # unused addon modules (WebEngine, Charts, 3D, Multimedia, ...) and keeps the frozen build small.
-dependencies = ["PySide6-Essentials>=6.11.1"]
+dependencies = ["PySide6-Essentials>=6.11.2"]
 
 # Console entry point: `seekbar` launches the GUI.
 [project.scripts]
@@ -80,12 +80,12 @@ exclude_lines = [
 # Dev/test/build tooling (not shipped): linter, type checker, test stack, packager, assertion and property libs.
 [dependency-groups]
 dev = [
-    "ruff>=0.16.2",
-    "ty>=0.0.70",
+    "ruff>=0.16.8",
+    "ty>=0.0.83",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "pytest-cov>=7.1.0",
-    "pyinstaller>=6.22.0",
-    "assertpy2>=2.20.1",
-    "hypothesis>=6.165.2",
+    "pyinstaller>=6.22.3",
+    "assertpy2>=2.27.0",
+    "hypothesis>=6.168.1",
 ]
